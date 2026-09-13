@@ -39,14 +39,38 @@ class HandleInertiaRequests extends Middleware
             true,
         );
 
+        $user = $request->user();
+        $activePeriod = \App\Models\KpiPeriod::latest('id')->first();
+        $roleName = $user?->role()->value('nama_role');
+        $isHrdOrAdmin = in_array($roleName, ['admin', 'super_admin'], true) ||
+            in_array(mb_strtolower($user?->karyawan?->jabatan?->nama_jabatan ?? ''), ['hrd', 'direktur', 'dirut'], true);
+
+        $isSupervisor = false;
+        if ($user?->karyawan_id && $activePeriod) {
+            $isSupervisor = \App\Models\KpiParticipant::where('kpi_period_id', $activePeriod->id)
+                ->where('atasan_langsung_id', $user->karyawan_id)
+                ->exists();
+        }
+
+        $isMpaEvaluator = false;
+        if ($user && $activePeriod) {
+            $isMpaEvaluator = $activePeriod->mpa_evaluator_id === $user->id;
+        }
+
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
                 'closingEvent' => $closingEventPermissions,
                 'attendance' => $attendancePermissions,
                 'cms' => [
                     'canManage' => $cmsCanManage,
+                ],
+                'kpi' => [
+                    'activePeriodId' => $activePeriod?->id,
+                    'isSupervisor' => $isSupervisor,
+                    'isMpaEvaluator' => $isMpaEvaluator,
+                    'isHrdOrAdmin' => $isHrdOrAdmin,
                 ],
             ],
             'flash' => [

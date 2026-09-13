@@ -19,6 +19,7 @@ use App\Http\Controllers\Employee\EmployeeMasterController;
 use App\Http\Controllers\Employee\JabatanController;
 use App\Http\Controllers\Employee\PenempatanController;
 use App\Http\Controllers\PublicPageController;
+use App\Http\Controllers\Kpi\KpiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicPageController::class, 'home'])->name('home');
@@ -44,6 +45,26 @@ Route::prefix('dashboard')
     ->name('dashboard.')
     ->middleware(['auth', 'active'])
     ->group(function (): void {
+        Route::prefix('kpi')->name('kpi.')->group(function (): void {
+            Route::get('/', [KpiController::class, 'index'])->name('index');
+            Route::post('period', [KpiController::class, 'createPeriod'])->name('period.store');
+            Route::get('period/{period}/karyawan', [KpiController::class, 'employees'])->name('employees');
+            Route::match(['get','post'],'daily', [KpiController::class, 'daily'])->name('daily');
+            Route::post('daily/bulk-approve', [KpiController::class, 'bulkApproveDaily'])->name('daily.bulk-approve');
+            Route::post('daily/{report}/approve', [KpiController::class, 'approveDaily'])->name('daily.approve');
+            Route::post('period/{period}/mpa/assign', [KpiController::class, 'assignEvaluator'])->name('mpa.assign');
+            Route::post('period/{period}/mpa/takeover/{monthly}', [KpiController::class, 'takeoverMpa'])->name('mpa.takeover');
+            Route::post('period/{period}/monthly/publish', [KpiController::class, 'publishMonthly'])->name('monthly.publish');
+            Route::post('period/{period}/monthly/save', [KpiController::class, 'saveMonthlyHrd'])->name('monthly.save');
+            Route::match(['get','post'],'period/{period}/individual', [KpiController::class, 'individual'])->name('individual');
+            Route::match(['get','post'],'period/{period}/ops', [KpiController::class, 'ops'])->name('ops');
+            Route::match(['get','post'],'period/{period}/mpa', [KpiController::class, 'mpa'])->name('mpa');
+            Route::get('period/{period}/monthly', [KpiController::class, 'monthly'])->name('monthly');
+            Route::get('period/{period}/nilai-akhir', [KpiController::class, 'finalScore'])->name('final');
+            Route::post('sign', [KpiController::class, 'signComponent'])->name('sign');
+            Route::post('correct', [KpiController::class, 'correctComponent'])->name('correct');
+            Route::get('notifications', [KpiController::class, 'notifications'])->name('notifications');
+        });
         Route::get('karyawan', [EmployeeController::class, 'index'])->name('karyawan.index');
         Route::get('karyawan/export', [EmployeeController::class, 'export'])
             ->middleware('super_admin')

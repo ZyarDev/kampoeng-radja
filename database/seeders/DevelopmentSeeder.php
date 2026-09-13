@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Departemen;
 use App\Models\Jabatan;
 use App\Models\Karyawan;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -12,22 +13,21 @@ use Illuminate\Database\Seeder;
 class DevelopmentSeeder extends Seeder
 {
     /**
-     * Seed the minimum CORE data and development administrator account.
+     * Seed optional development data. This seeder is never called by DatabaseSeeder.
      */
     public function run(): void
     {
-        $departemen = Departemen::firstOrCreate([
-            'nama_departemen' => 'IT',
+        $this->call([
+            RoleSeeder::class,
+            DepartemenSeeder::class,
+            JabatanSeeder::class,
+            PenempatanSeeder::class,
         ]);
 
-        $jabatan = Jabatan::firstOrCreate([
-            'nama_jabatan' => 'Admin Sistem',
-        ]);
-
-        $roles = collect(['super_admin', 'admin', 'user'])
-            ->mapWithKeys(fn (string $name): array => [
-                $name => Role::firstOrCreate(['nama_role' => $name]),
-            ]);
+        $departemen = Departemen::query()->where('nama_departemen', 'Management')->firstOrFail();
+        $jabatan = Jabatan::query()->where('nama_jabatan', 'IT')->firstOrFail();
+        $penempatan = Penempatan::query()->where('nama_penempatan', 'IT')->firstOrFail();
+        $superAdminRole = Role::query()->where('nama_role', 'super_admin')->firstOrFail();
 
         $karyawan = Karyawan::updateOrCreate(
             ['nik' => 'ADMIN001'],
@@ -42,6 +42,7 @@ class DevelopmentSeeder extends Seeder
                 'pendidikan' => 'S1',
                 'jabatan_id' => $jabatan->id,
                 'departemen_id' => $departemen->id,
+                'penempatan_id' => $penempatan->id,
                 'status_keaktifan' => 'aktif',
                 'status_kerja' => 'kontrak',
                 'tanggal_masuk' => '2026-01-01',
@@ -55,11 +56,20 @@ class DevelopmentSeeder extends Seeder
             ['username' => 'admin'],
             [
                 'karyawan_id' => $karyawan->id,
-                'role_id' => $roles->get('super_admin')->id,
+                'role_id' => $superAdminRole->id,
                 'pin' => '123456',
                 'is_active' => true,
                 'must_change_pin' => false,
             ],
         );
+
+        foreach (range(1, 20) as $number) {
+            $attributes = Karyawan::factory()
+                ->state(['nik' => sprintf('DUMMY%03d', $number)])
+                ->make()
+                ->getAttributes();
+
+            Karyawan::updateOrCreate(['nik' => $attributes['nik']], $attributes);
+        }
     }
 }

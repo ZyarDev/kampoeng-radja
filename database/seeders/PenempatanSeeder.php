@@ -25,7 +25,7 @@ class PenempatanSeeder extends Seeder
             'Kebersihan',
             'JWP',
             'Resto',
-            'FG / Front Gate',
+            'Front Gate / FG',
             'Galery',
             'Outbound',
         ] as $placementName) {
