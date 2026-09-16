@@ -62,14 +62,5 @@ class DevelopmentSeeder extends Seeder
                 'must_change_pin' => false,
             ],
         );
-
-        foreach (range(1, 20) as $number) {
-            $attributes = Karyawan::factory()
-                ->state(['nik' => sprintf('DUMMY%03d', $number)])
-                ->make()
-                ->getAttributes();
-
-            Karyawan::updateOrCreate(['nik' => $attributes['nik']], $attributes);
-        }
     }
 }

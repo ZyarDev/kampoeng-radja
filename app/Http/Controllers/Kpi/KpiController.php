@@ -15,6 +15,8 @@ use App\Models\KpiParticipant;
 use App\Models\KpiPeriod;
 use App\Models\KpiSignature;
 use App\Models\User;
+use App\Support\KpiClock;
+use App\Services\KpiPeriodService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,9 +32,13 @@ class KpiController extends Controller
         $user = $request->user();
         $employee = $user->karyawan;
 
-        $periods = KpiPeriod::orderBy('tahun', 'desc')
+        $periods = KpiPeriod::withCount('participants')->orderBy('tahun', 'desc')
             ->orderBy('bulan', 'desc')
-            ->get();
+            ->get()
+            ->map(function (KpiPeriod $period) {
+                $period->configuration_errors = $period->participants()->whereNull('atasan_langsung_id')->count();
+                return $period;
+            });
 
         $activePeriod = $periods->first();
 
@@ -57,40 +63,7 @@ class KpiController extends Controller
         abort_unless($request->user()->role()->value('nama_role') === 'super_admin', 403);
 
         $d = Carbon::createFromDate($request->integer('tahun'), $request->integer('bulan'), 1);
-        $period = KpiPeriod::firstOrCreate(['bulan' => $d->month, 'tahun' => $d->year]);
-
-        if ($period->wasRecentlyCreated) {
-            DB::transaction(function () use ($period) {
-                Karyawan::with(['jabatan', 'departemen', 'penempatan', 'atasanLangsung.atasanLangsung'])
-                    ->where('status_keaktifan', 'aktif')
-                    ->get()
-                    ->filter(fn ($e) => ! in_array(mb_strtolower($e->jabatan?->nama_jabatan ?? ''), ['dirut', 'direktur']))
-                    ->each(function ($e) use ($period) {
-                        $atasanId = $e->atasan_langsung_id;
-                        $atasanNama = $e->atasanLangsung?->nama;
-
-                        if (! $atasanId) {
-                            $atasanId = $e->id;
-                            $atasanNama = $e->nama;
-                        }
-
-                        KpiParticipant::create([
-                            'kpi_period_id' => $period->id,
-                            'karyawan_id' => $e->id,
-                            'jabatan_id' => $e->jabatan_id,
-                            'jabatan_snapshot' => $e->jabatan?->nama_jabatan ?? '-',
-                            'departemen_id' => $e->departemen_id,
-                            'departemen_snapshot' => $e->departemen?->nama_departemen ?? '-',
-                            'penempatan_id' => $e->penempatan_id,
-                            'penempatan_snapshot' => $e->penempatan?->nama_penempatan ?? '-',
-                            'atasan_langsung_id' => $atasanId,
-                            'atasan_langsung_snapshot' => $atasanNama,
-                            'atasan_kedua_id' => $e->atasanLangsung?->atasan_langsung_id,
-                            'atasan_kedua_snapshot' => $e->atasanLangsung?->atasanLangsung?->nama,
-                        ]);
-                    });
-            });
-        }
+        $period = app(KpiPeriodService::class)->ensureForPerformanceMonth($d->month, $d->year);
 
         return back()->with('success', 'Periode KPI dan snapshot peserta berhasil dibuat.');
     }
@@ -103,15 +76,19 @@ class KpiController extends Controller
         $user = $request->user();
         $isSuper = $user->role()->value('nama_role') === 'super_admin';
 
-        $query = $period->participants()->with(['karyawan.jabatan', 'karyawan.departemen']);
+        $query = $period->participants()
+            ->with(['karyawan.jabatan', 'karyawan.departemen', 'karyawan.penempatan'])
+            ->whereHas('karyawan', fn ($employeeQuery) => $employeeQuery->where('status_keaktifan', 'aktif'));
 
         // Hierarchy filter for non-superadmin: filter by subordinates using period participant snapshot
         if (! $isSuper && $user->karyawan_id) {
-            $subordinateIds = $this->getAllSubordinateKaryawanIds($user->karyawan_id, $period->id);
+            $subordinateIds = $this->getCurrentSubordinateKaryawanIds($user->karyawan_id);
             $query->whereIn('karyawan_id', $subordinateIds);
         }
 
-        $participants = $query->get()->map(function ($p) use ($user, $isSuper, $period) {
+        $participants = $query->get()
+            ->reject(fn ($p) => $this->isExcludedKpiPosition($p->karyawan?->jabatan?->nama_jabatan))
+            ->map(function ($p) use ($user, $isSuper, $period) {
             $ki = KpiIndividualScore::where('kpi_participant_id', $p->id)->first();
             $opsCount = KpiOpsItem::where('kpi_participant_id', $p->id)->count();
 
@@ -122,6 +99,17 @@ class KpiController extends Controller
             $isSelf = $p->karyawan_id === $user->karyawan_id;
             $isDirectSupervisor = $user->karyawan_id && $p->atasan_langsung_id === $user->karyawan_id;
 
+            $dailyStatuses = KpiDailyReport::where('karyawan_id', $p->karyawan_id)
+                ->whereBetween('tanggal', [
+                    Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->toDateString(),
+                    Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->endOfMonth()->toDateString(),
+                ])->pluck('status', 'id');
+            $dailyStatusValues = $dailyStatuses->values();
+            $dailyStatus = $dailyStatusValues->contains('waiting_approval') ? 'waiting_approval'
+                : ($dailyStatusValues->contains('not_filled') ? 'not_filled'
+                : ($dailyStatusValues->isNotEmpty() && $dailyStatusValues->every(fn ($status) => $status === 'approved') ? 'approved' : 'none'));
+
+
             $canEditKi = $isSelf || $isDirectSupervisor || $isSuper;
             $canEditOps = $isSelf || $isSuper;
 
@@ -130,9 +118,12 @@ class KpiController extends Controller
                 'karyawan_id' => $p->karyawan_id,
                 'nama' => $p->karyawan?->nama ?? 'Unknown',
                 'nip' => $p->karyawan?->nip ?? '-',
+                'nik' => $p->karyawan?->nik ?? $p->karyawan?->nip ?? '-',
                 'jabatan' => $p->jabatan_snapshot,
                 'departemen' => $p->departemen_snapshot,
+                'penempatan' => $p->penempatan_snapshot ?? $p->karyawan?->penempatan?->nama_penempatan ?? '-',
                 'atasan_langsung' => $p->atasan_langsung_snapshot,
+                'atasan_langsung_id' => $p->karyawan?->atasan_langsung_id ?? $p->atasan_langsung_id,
                 'ki_status' => $ki?->status ?? 'draft',
                 'ki_score' => $ki?->score ?? 0,
                 'ops_count' => $opsCount,
@@ -140,13 +131,48 @@ class KpiController extends Controller
                 'needs_sp1_followup' => $needsSp1Followup,
                 'can_edit_ki' => $canEditKi,
                 'can_edit_ops' => $canEditOps,
+                'daily_status' => $dailyStatus,
+                'daily_count' => $dailyStatuses->count(),
+                'pending_daily_ids' => $user->karyawan_id ? KpiDailyReport::whereIn('id', $dailyStatuses->keys())
+                    ->where('status', 'waiting_approval')
+                    ->where('atasan_snapshot_id', $user->karyawan_id)->pluck('id')->all() : [],
             ];
-        });
+            });
+
+        $levels = [];
+        $children = Karyawan::where('status_keaktifan', 'aktif')
+            ->get(['id', 'atasan_langsung_id'])->groupBy('atasan_langsung_id');
+        $frontier = $user->karyawan_id ? [(int) $user->karyawan_id] : [];
+        $visited = array_fill_keys($frontier, true);
+        $level = 1;
+        while ($frontier) {
+            $next = [];
+            foreach ($frontier as $parentId) {
+                foreach ($children->get($parentId, collect()) as $child) {
+                    if (isset($visited[$child->id])) continue;
+                    $visited[$child->id] = true;
+                    $next[] = (int) $child->id;
+                }
+            }
+            $members = $participants->filter(fn ($p) => in_array((int) $p['karyawan_id'], $next, true))->values();
+            if ($members->isNotEmpty()) {
+                $levels[] = ['level' => $level, 'label' => $level === 1 ? 'Bawahan Langsung' : 'Bawahan '.([2 => 'Kedua', 3 => 'Ketiga', 4 => 'Keempat'][$level] ?? 'Level '.$level), 'participants' => $members];
+            }
+            $frontier = $next;
+            $level++;
+        }
+        if ($isSuper) {
+            $outside = $participants->reject(fn ($p) => isset($visited[$p['karyawan_id']]) || (int) $p['karyawan_id'] === (int) $user->karyawan_id)->values();
+            if ($outside->isNotEmpty()) {
+                $levels[] = ['level' => 0, 'label' => 'Bawahan Tidak Langsung', 'participants' => $outside];
+            }
+        }
 
         return inertia('Internal/Kpi/Employees', [
             'user' => $this->userPayload($request),
             'period' => $period,
             'participants' => $participants,
+            'hierarchy' => $levels,
         ]);
     }
 
@@ -155,10 +181,20 @@ class KpiController extends Controller
      */
     public function daily(Request $request)
     {
-        $employee = $request->user()->karyawan;
+        $viewer = $request->user();
+        $employee = $viewer->karyawan;
         abort_unless($employee, 403, 'User tidak terhubung ke data karyawan.');
+        $targetKaryawanId = $request->integer('karyawan_id') ?: $employee->id;
+        if ($targetKaryawanId !== $employee->id) {
+            $isSuper = $viewer->role()->value('nama_role') === 'super_admin';
+            $periodId = $request->integer('period_id');
+            $allowed = $isSuper || ($periodId && in_array($targetKaryawanId, $this->getAllSubordinateKaryawanIds($employee->id, $periodId), true));
+            abort_unless($allowed, 403, 'Anda tidak memiliki akses monitoring Daily Report karyawan ini.');
+            $employee = Karyawan::findOrFail($targetKaryawanId);
+        }
+        $isOwner = $targetKaryawanId === $viewer->karyawan_id;
         $employee->loadMissing(['jabatan', 'departemen', 'penempatan', 'atasanLangsung']);
-        abort_if(in_array(mb_strtolower($employee->jabatan?->nama_jabatan ?? ''), ['dirut', 'direktur'], true), 403, 'Jabatan ini tidak wajib mengisi Daily Report.');
+        abort_if($this->isExcludedKpiPosition($employee->jabatan?->nama_jabatan), 403, 'Jabatan ini tidak wajib mengisi Daily Report.');
 
         $dateStr = $request->input('tanggal', now('Asia/Jakarta')->toDateString());
         $targetDate = Carbon::parse($dateStr, 'Asia/Jakarta');
@@ -186,6 +222,7 @@ class KpiController extends Controller
         $statusKehadiran = $absensi?->status_kehadiran;
 
         if ($request->isMethod('post')) {
+            abort_unless($isOwner, 403, 'Daily Report bawahan hanya dapat dimonitor, bukan diedit.');
             abort_unless($isEditable, 422, 'Hanya dapat mengisi/edit daily report untuk hari ini atau kemarin.');
             abort_if($report->status === 'approved', 422, 'Daily report yang sudah disetujui tidak dapat diubah.');
             abort_unless($statusKehadiran === 'H', 422, 'Daily Report hanya wajib pada hari dengan status Absensi H.');
@@ -199,6 +236,13 @@ class KpiController extends Controller
             ]);
 
             DB::transaction(function () use ($report, $data, $request) {
+                // firstOrNew returns an unsaved model for a new date. Persist
+                // the header before touching activities so the FK can never
+                // receive a null daily_report_id.
+                if (! $report->exists) {
+                    $report->save();
+                }
+
                 $oldPaths = $report->exists ? $report->activities()->pluck('bukti_path')->filter()->all() : [];
                 $newPaths = [];
                 $report->activities()->delete();
@@ -213,8 +257,7 @@ class KpiController extends Controller
                     }
                     if ($fotoPath) $newPaths[] = $fotoPath;
 
-                    KpiDailyActivity::create([
-                        'daily_report_id' => $report->id,
+                    $report->activities()->create([
                         'urutan' => $index + 1,
                         'rincian_kegiatan' => $actData['rincian_kegiatan'],
                         'keterangan' => $actData['keterangan'] ?? null,
@@ -237,6 +280,28 @@ class KpiController extends Controller
 
         $missingCount = $this->calculateMissingDailyCount($employee->id, $targetDate);
 
+        // A brand-new report for today may start from yesterday's activity
+        // descriptions. This is deliberately limited to yesterday and never
+        // persisted until the employee explicitly saves today's report.
+        if (! $report->exists && $targetDate->isToday()) {
+            $yesterdayReport = KpiDailyReport::with('activities')
+                ->where('karyawan_id', $employee->id)
+                ->whereDate('tanggal', $targetDate->copy()->subDay()->toDateString())
+                ->where('status', '!=', 'not_filled')
+                ->first();
+
+            if ($yesterdayReport?->activities?->isNotEmpty()) {
+                $report->setRelation('activities', $yesterdayReport->activities->map(
+                    fn (KpiDailyActivity $activity) => new KpiDailyActivity([
+                        'urutan' => $activity->urutan,
+                        'rincian_kegiatan' => $activity->rincian_kegiatan,
+                        'keterangan' => null,
+                        'bukti_path' => null,
+                    ])
+                ));
+            }
+        }
+
         $pendingApprovals = KpiDailyReport::with(['activities', 'karyawan'])
             ->where('atasan_snapshot_id', $employee->id)
             ->where('status', 'waiting_approval')
@@ -250,14 +315,36 @@ class KpiController extends Controller
                 'activities' => $r->activities,
             ]);
 
+        $historyPeriod = $request->integer('period_id') ? KpiPeriod::find($request->integer('period_id')) : null;
+        $historyStart = $historyPeriod && $historyPeriod->tahun === $targetDate->year && $historyPeriod->bulan === $targetDate->month
+            ? Carbon::create($historyPeriod->tahun, $historyPeriod->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
+            : $targetDate->copy()->startOfMonth();
+        $dailyHistory = KpiDailyReport::where('karyawan_id', $employee->id)
+            ->whereBetween('tanggal', [$historyStart->toDateString(), $historyStart->copy()->endOfMonth()->toDateString()])
+            ->orderByDesc('tanggal')
+            ->get(['id', 'tanggal', 'status', 'approved_at']);
+        $reportsByDate = $dailyHistory->keyBy(fn ($item) => $item->tanggal->toDateString());
+        $attendanceByDate = Absensi::where('karyawan_id', $employee->id)
+            ->whereBetween('tanggal_absensi', [$historyStart->toDateString(), $historyStart->copy()->endOfMonth()->toDateString()])
+            ->pluck('status_kehadiran', 'tanggal_absensi');
+        $today = now('Asia/Jakarta')->startOfDay();
+        $dailyCalendar = collect(range(1, $historyStart->daysInMonth))->map(function ($day) use ($historyStart, $reportsByDate, $attendanceByDate, $today) {
+            $date = $historyStart->copy()->day($day);
+            $key = $date->toDateString();
+            $report = $reportsByDate->get($key);
+            $status = $date->dayOfWeekIso === 5 ? 'neutral' : ($report?->status === 'approved' ? 'approved' : ($report?->status === 'waiting_approval' ? 'waiting_approval' : ($report?->status === 'not_filled' ? 'not_filled' : ($attendanceByDate->get($key) === 'H' ? ($date->greaterThanOrEqualTo($today->copy()->subDay()) ? 'in_progress' : 'not_filled') : 'neutral'))));
+            return ['date' => $key, 'day' => $day, 'status' => $status, 'report_id' => $report?->id];
+        })->values()->all();
+
         return inertia('Internal/Kpi/DailyReport', [
             'user' => $this->userPayload($request),
-            'report' => $report->load('activities'),
+            'report' => $report->exists ? $report->load('activities') : $report,
             'targetDate' => $targetDate->toDateString(),
             'isEditable' => $isEditable,
             'statusKehadiran' => $statusKehadiran,
             'isEligible' => $statusKehadiran === 'H',
             'employeeHeader' => [
+                'id' => $employee->id,
                 'nama' => $employee->nama,
                 'nik' => $employee->nik,
                 'perusahaan' => 'Kampoeng Radja',
@@ -273,13 +360,19 @@ class KpiController extends Controller
                 'position' => $report->atasanSnapshot?->jabatan?->nama_jabatan ?? 'Atasan Langsung',
                 'status' => $report->status,
                 'approved_at' => $report->approved_at?->format('d/m/Y H:i'),
+                'can_approve' => $report->status === 'waiting_approval' && $viewer->karyawan_id && $report->atasan_snapshot_id === $viewer->karyawan_id,
+                'signature_url' => $report->approval_signature_path ? Storage::disk('public')->url($report->approval_signature_path) : ($report->atasanSnapshot?->foto_tanda_tangan ? Storage::disk('public')->url($report->atasanSnapshot->foto_tanda_tangan) : null),
             ],
             'activePeriodId' => KpiParticipant::where('karyawan_id', $employee->id)
                 ->whereHas('period', fn ($query) => $query->orderByDesc('tahun')->orderByDesc('bulan'))
                 ->latest('kpi_period_id')
                 ->value('kpi_period_id'),
+            'isOwner' => $isOwner,
             'missingCount' => $missingCount,
             'pendingApprovals' => $pendingApprovals,
+            'dailyCalendar' => $dailyCalendar,
+            'calendarMonth' => $historyStart->month,
+            'calendarYear' => $historyStart->year,
         ]);
     }
 
@@ -294,12 +387,14 @@ class KpiController extends Controller
         $isDirectSupervisor = $employee && $report->atasan_snapshot_id === $employee->id;
         abort_unless($isDirectSupervisor, 403, 'Hanya Atasan Langsung (snapshot) yang dapat menyetujui Daily Report ini.');
         abort_unless($report->status === 'waiting_approval', 422, 'Report tidak dalam status menunggu persetujuan.');
+        $signaturePath = $this->snapshotDailyApprovalSignature($report, $employee);
 
         $report->update([
             'status' => 'approved',
             'approved_by' => $user->id,
             'approved_at' => now('Asia/Jakarta'),
             'approval_source' => 'manual',
+            'approval_signature_path' => $signaturePath,
         ]);
 
         return back()->with('success', 'Daily Report berhasil disetujui.');
@@ -323,14 +418,35 @@ class KpiController extends Controller
         abort_unless($employee, 403, 'User tidak Memiliki data karyawan.');
         $query->where('atasan_snapshot_id', $employee->id);
 
-        $count = $query->update([
-            'status' => 'approved',
-            'approved_by' => $user->id,
-            'approved_at' => now('Asia/Jakarta'),
-            'approval_source' => 'manual',
-        ]);
+        $reports = $query->with('karyawan')->get();
+        $count = DB::transaction(function () use ($reports, $user, $employee): int {
+            foreach ($reports as $report) {
+                $signaturePath = $this->snapshotDailyApprovalSignature($report, $employee);
+                $report->update([
+                    'status' => 'approved',
+                    'approved_by' => $user->id,
+                    'approved_at' => now('Asia/Jakarta'),
+                    'approval_source' => 'manual',
+                    'approval_signature_path' => $signaturePath,
+                ]);
+            }
+            return $reports->count();
+        });
 
         return back()->with('success', "{$count} Daily Report berhasil disetujui secara masal.");
+    }
+
+    private function snapshotDailyApprovalSignature(KpiDailyReport $report, Karyawan $approver): string
+    {
+        $source = trim((string) $approver->foto_tanda_tangan);
+        $source = preg_replace('#^/?storage/#', '', $source);
+        abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Tanda tangan Atasan Langsung belum tersedia.');
+
+        $extension = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
+        $destination = 'kpi/daily-signatures/'.$report->id.'_'.now('Asia/Jakarta')->format('YmdHisv').'.'.$extension;
+        abort_unless(Storage::disk('public')->copy($source, $destination), 422, 'Snapshot tanda tangan Daily Report gagal disimpan.');
+
+        return $destination;
     }
 
     /**
@@ -342,30 +458,42 @@ class KpiController extends Controller
         $score = KpiIndividualScore::firstOrCreate(
             ['kpi_participant_id' => $participant->id],
             [
-                'capaian_departemen' => 0,
-                'perawatan_aset' => 0,
-                'kebersihan_kerapihan' => 0,
+                'capaian_departemen' => null,
+                'perawatan_aset' => null,
+                'kebersihan_kerapihan' => null,
                 'score' => 0,
                 'status' => 'draft',
+                'parameter_snapshot' => $this->individualParameterSnapshot(),
             ]
         );
 
-        $isWindowAllowed = $this->isHardWindowActive($period);
-        $isSuperAdmin = $request->user()->role()->value('nama_role') === 'super_admin';
+        if (! $score->parameter_snapshot) {
+            $score->update(['parameter_snapshot' => $this->individualParameterSnapshot()]);
+        }
+
+        // K-OPS uses the real application clock; the local debug clock is reserved for KI.
+        $opsNow = now('Asia/Jakarta');
+        $opsStart = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay();
+        $opsEnd = $opsStart->copy()->addDay()->endOfDay();
+        $isWindowAllowed = $opsNow->between($opsStart, $opsEnd);
+        $windowState = $this->individualWindowState($period);
+        $user = $request->user();
+        $isSelf = $participant->karyawan_id === $user->karyawan_id;
+        $signature = KpiSignature::where('signable_type', KpiIndividualScore::class)
+            ->where('signable_id', $score->id)
+            ->where('role', 'atasan_langsung')
+            ->first();
+        $approver = $participant->atasanLangsung()->with(['jabatan', 'user'])->first();
 
         if ($request->isMethod('post')) {
-            $user = $request->user();
-            $isSelf = $participant->karyawan_id === $user->karyawan_id;
-            $isDirectSupervisor = $user->karyawan_id && $participant->atasan_langsung_id === $user->karyawan_id;
-
-            abort_unless($isSelf || $isDirectSupervisor || $isSuperAdmin, 403, 'Anda tidak berwenang mengisi/mengubah Kinerja Individu peserta ini.');
-            abort_unless($isWindowAllowed || $isSuperAdmin, 422, 'Pengisian Kinerja Individu hanya diizinkan pada tanggal 1–2 bulan berikutnya.');
-            abort_if($score->status === 'approved', 422, 'Nilai Kinerja Individu sudah disetujui.');
+            abort_unless($isSelf, 403, 'Hanya pemilik penilaian yang dapat mengisi Kinerja Individu.');
+            abort_unless($isWindowAllowed, 422, 'Pengisian Kinerja Individu hanya diizinkan pada tanggal 1–2 bulan berikutnya.');
+            abort_if(in_array($score->status, ['approved', 'auto_signed', 'locked'], true), 422, 'Nilai Kinerja Individu sudah dikunci.');
 
             $v = $request->validate([
-                'capaian_departemen' => 'required|numeric|min:0|max:100',
-                'perawatan_aset' => 'required|numeric|min:0|max:100',
-                'kebersihan_kerapihan' => 'required|numeric|min:0|max:100',
+                'capaian_departemen' => 'required|numeric|min:1|max:100',
+                'perawatan_aset' => 'required|numeric|min:1|max:100',
+                'kebersihan_kerapihan' => 'required|numeric|min:1|max:100',
                 'keterangan_capaian' => 'nullable|string|max:500',
                 'keterangan_aset' => 'nullable|string|max:500',
                 'keterangan_kebersihan' => 'nullable|string|max:500',
@@ -386,7 +514,7 @@ class KpiController extends Controller
                 'keterangan_kebersihan' => $v['keterangan_kebersihan'] ?? null,
                 'score' => $finalScore,
                 'status' => 'submitted',
-                'submitted_at' => now('Asia/Jakarta'),
+                'submitted_at' => KpiClock::now(),
                 'submit_type' => 'manual',
             ]);
 
@@ -396,10 +524,43 @@ class KpiController extends Controller
         return inertia('Internal/Kpi/Individual', [
             'user' => $this->userPayload($request),
             'period' => $period,
-            'participant' => $participant,
+            'participant' => $participant->load(['karyawan.jabatan', 'karyawan.departemen', 'karyawan.penempatan', 'atasanLangsung.jabatan']),
             'score' => $score,
             'isWindowAllowed' => $isWindowAllowed,
+            'windowState' => $windowState,
+            'isOwner' => $isSelf,
+            'canApprove' => (bool) ($user->karyawan_id && $participant->atasan_langsung_id === $user->karyawan_id),
+            'approval' => $signature ? [
+                'status' => $signature->source === 'automatic' ? 'auto_signed' : 'approved',
+                'source' => $signature->source,
+                'signed_at' => $signature->signed_at,
+                'signature_url' => $signature->signature_path ? Storage::disk('public')->url($signature->signature_path) : null,
+                'signer_name' => $approver?->nama,
+                'signer_position' => $approver?->jabatan?->nama_jabatan,
+            ] : null,
         ]);
+    }
+
+    private function individualParameterSnapshot(): array
+    {
+        return [
+            ['key' => 'capaian_departemen', 'label' => 'Capaian Departemen', 'weight' => 0.70],
+            ['key' => 'perawatan_aset', 'label' => 'Perawatan Aset Kerja Sesuai Bidang', 'weight' => 0.05],
+            ['key' => 'kebersihan_kerapihan', 'label' => 'Kebersihan & Kerapihan Lingkungan Kerja', 'weight' => 0.05],
+        ];
+    }
+
+    private function individualWindowState(KpiPeriod $period): string
+    {
+        $now = $this->kpiDebugNow();
+        $start = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay();
+        $end = $start->copy()->addDay()->endOfDay();
+        return $now->lt($start) ? 'upcoming' : ($now->lte($end) ? 'open' : 'closed');
+    }
+
+    private function kpiDebugNow(): Carbon
+    {
+        return KpiClock::now();
     }
 
     /**
@@ -407,7 +568,8 @@ class KpiController extends Controller
      */
     public function ops(Request $request, KpiPeriod $period)
     {
-        $participant = $this->getParticipantOrTarget($request, $period);
+        $participant = $this->getParticipantOrTarget($request, $period)
+            ->load(['karyawan.user', 'karyawan.jabatan', 'atasanLangsung.user', 'atasanLangsung.jabatan']);
         $items = KpiOpsItem::where('kpi_participant_id', $participant->id)
             ->orderBy('urutan', 'asc')
             ->get();
@@ -419,14 +581,15 @@ class KpiController extends Controller
 
         if ($request->isMethod('post')) {
             abort_unless($isSelf || $isSuperAdmin, 403, 'Anda tidak memiliki hak akses untuk mengisi/mengubah Kinerja OPS peserta ini.');
-            abort_unless($isWindowAllowed || $isSuperAdmin, 422, 'Pengisian Kinerja OPS hanya diizinkan pada tanggal 1–2 bulan berikutnya.');
+            abort_unless($isWindowAllowed, 422, 'Pengisian Kinerja OPS hanya diizinkan pada tanggal 1–2 bulan berikutnya.');
+            abort_if($items->contains(fn ($item) => in_array($item->status, ['approved', 'locked', 'auto_signed', 'not_filled'], true)), 422, 'Kinerja OPS ini sudah dikirim atau dikunci.');
 
             $v = $request->validate([
                 'items' => 'required|array|min:1',
                 'items.*.id' => 'nullable|integer',
-                'items.*.kpi_item' => 'required|string|max:255',
+                'items.*.kpi_item' => 'nullable|string|max:255',
                 'items.*.maintenance' => 'nullable|string|max:255',
-                'items.*.target_unit' => 'required|numeric|min:0.0001',
+                'items.*.target_unit' => 'nullable|numeric|min:0.0001',
                 'items.*.tanda' => 'nullable|string|max:10',
                 'items.*.frekuensi' => 'nullable|string|max:100',
                 'items.*.hasil' => 'nullable|numeric|min:0',
@@ -438,13 +601,23 @@ class KpiController extends Controller
             $totalTargetUnit = collect($v['items'])->sum(fn ($i) => (float) $i['target_unit']);
             abort_if($totalTargetUnit <= 0, 422, 'Total Target Unit harus lebih dari 0.');
 
-            DB::transaction(function () use ($participant, $v, $totalTargetUnit, $request) {
+            DB::transaction(function () use ($participant, $v, $totalTargetUnit, $request, $isSuperAdmin) {
                 $existingIds = collect($v['items'])->pluck('id')->filter();
                 KpiOpsItem::where('kpi_participant_id', $participant->id)
                     ->whereNotIn('id', $existingIds)
                     ->delete();
 
                 foreach ($v['items'] as $index => $itemData) {
+                    $existing = !empty($itemData['id'])
+                        ? KpiOpsItem::where('kpi_participant_id', $participant->id)->find($itemData['id'])
+                        : null;
+                    if (!$isSuperAdmin && $existing) {
+                        $itemData['kpi_item'] = $existing->kpi_item;
+                        $itemData['maintenance'] = $existing->maintenance;
+                        $itemData['target_unit'] = $existing->target_unit;
+                        $itemData['tanda'] = $existing->tanda;
+                        $itemData['frekuensi'] = $existing->frekuensi;
+                    }
                     $target = (float) $itemData['target_unit'];
                     $hasil = isset($itemData['hasil']) && $itemData['hasil'] !== '' && $itemData['hasil'] !== null ? (float) $itemData['hasil'] : null;
 
@@ -459,7 +632,7 @@ class KpiController extends Controller
                     if ($request->hasFile("items.{$index}.bukti_evidence")) {
                         $file = $request->file("items.{$index}.bukti_evidence");
                         $storedPath = $file->store('kpi/ops-evidence', 'public');
-                        $buktiPath = Storage::disk('public')->url($storedPath);
+                        $buktiPath = $storedPath;
                     }
 
                     KpiOpsItem::updateOrCreate(
@@ -480,8 +653,11 @@ class KpiController extends Controller
                             'aktivitas' => $itemData['aktivitas'] ?? null,
                             'bukti_path' => $buktiPath,
                             'nilai_item' => $nilaiItem,
-                            'status' => 'submitted',
-                            'submit_type' => 'manual',
+                            'target_bulanan' => $target,
+                            'bulan' => $participant->period?->bulan,
+                            'status' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? 'draft' : 'submitted',
+                            'submit_type' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? null : 'manual',
+                            'submitted_at' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? null : now('Asia/Jakarta'),
                         ]
                     );
                 }
@@ -492,6 +668,21 @@ class KpiController extends Controller
 
         $totalKops = round($items->sum('nilai_item'), 2);
         $totalBebanTarget = round($items->sum('beban_target'), 2);
+        $signatures = KpiSignature::query()
+            ->where('signable_type', KpiParticipant::class)
+            ->where('signable_id', $participant->id)
+            ->whereIn('role', ['employee', 'atasan_langsung'])
+            ->get()
+            ->keyBy('role')
+            ->map(fn (KpiSignature $signature) => [
+                'source' => $signature->source,
+                'signed_at' => $signature->signed_at?->timezone('Asia/Jakarta')->format('d/m/Y H:i'),
+                'signature_url' => $signature->source === 'manual' && $signature->signature_path
+                    ? Storage::disk('public')->url($signature->signature_path)
+                    : null,
+                'reason' => $signature->reason,
+            ]);
+        $hasSubmittedItems = $items->isNotEmpty() && $items->every(fn (KpiOpsItem $item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed', 'not_filled'], true));
 
         return inertia('Internal/Kpi/Ops', [
             'user' => $this->userPayload($request),
@@ -501,6 +692,10 @@ class KpiController extends Controller
             'totalKops' => $totalKops,
             'totalBebanTarget' => $totalBebanTarget,
             'isWindowAllowed' => $isWindowAllowed,
+            'isOwner' => (int) $participant->karyawan_id === (int) $user->karyawan_id,
+            'signatures' => $signatures,
+            'canSignEmployee' => $hasSubmittedItems && (int) $participant->karyawan_id === (int) $user->karyawan_id && ! $signatures->has('employee'),
+            'canSignSupervisor' => $hasSubmittedItems && (int) $participant->atasan_langsung_id === (int) $user->karyawan_id && ! $signatures->has('atasan_langsung'),
         ]);
     }
 
@@ -533,7 +728,7 @@ class KpiController extends Controller
         abort_unless($evaluatorUser->karyawan_id, 422, 'Evaluator harus terikat data karyawan.');
 
         $jabatanNama = mb_strtolower($evaluatorUser->karyawan?->jabatan?->nama_jabatan ?? '');
-        abort_if(in_array($jabatanNama, ['dirut', 'direktur']), 422, 'Dirut dan Direktur tidak dapat ditunjuk sebagai evaluator reguler.');
+        abort_if($this->isExcludedKpiPosition($jabatanNama), 422, 'Dirut dan Direktur tidak dapat ditunjuk sebagai evaluator reguler.');
 
         $isParticipant = KpiParticipant::where('kpi_period_id', $period->id)
             ->where('karyawan_id', $evaluatorUser->karyawan_id)
@@ -579,7 +774,7 @@ class KpiController extends Controller
         $windowStart = Carbon::create($perfYear, $perfMonth, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay(); // Day 1 00:00
         $windowEnd = Carbon::create($perfYear, $perfMonth, 5, 23, 59, 59, 'Asia/Jakarta')->addMonth(); // Day 5 23:59
 
-        $isWindowOpen = $now->betweenInclusive($windowStart, $windowEnd);
+        $isWindowOpen = $now->betweenIncluded($windowStart, $windowEnd);
         $isBlocked = ! $period->mpa_evaluator_id && $now->gt($windowStart);
 
         // Fetch target participant if provided in request, else default first eligible
@@ -595,7 +790,7 @@ class KpiController extends Controller
             ->get()
             ->filter(function ($u) use ($period) {
                 $jab = mb_strtolower($u->karyawan?->jabatan?->nama_jabatan ?? '');
-                if (in_array($jab, ['dirut', 'direktur'])) return false;
+                if ($this->isExcludedKpiPosition($jab)) return false;
                 return KpiParticipant::where('kpi_period_id', $period->id)->where('karyawan_id', $u->karyawan_id)->exists();
             })
             ->values();
@@ -1131,7 +1326,9 @@ class KpiController extends Controller
         ]);
 
         $employee = $user->karyawan;
-        abort_unless($employee && $employee->foto_tanda_tangan, 422, 'Foto tanda tangan Anda belum diunggah. Lengkapi foto tanda tangan di profil/master karyawan terlebih dahulu.');
+        abort_unless($employee && $employee->foto_tanda_tangan, 422, $request->input('signable_type') === 'kinerja_individu'
+            ? 'Tanda tangan Atasan Langsung belum tersedia. Lengkapi foto tanda tangan di profil/master karyawan terlebih dahulu.'
+            : 'Foto tanda tangan Anda belum diunggah. Lengkapi foto tanda tangan di profil/master karyawan terlebih dahulu.');
 
         $map = [
             'kinerja_individu' => KpiIndividualScore::class,
@@ -1147,6 +1344,7 @@ class KpiController extends Controller
         if ($v['signable_type'] === 'kinerja_individu') {
             $participant = $record->participant;
             abort_unless($user->karyawan_id === $participant->atasan_langsung_id, 403, 'Hanya Atasan Langsung snapshot periode ini yang berwenang menandatangani Kinerja Individu.');
+            abort_if(in_array($record->status, ['approved', 'auto_signed', 'locked'], true), 422, 'Kinerja Individu sudah dikunci.');
         } elseif ($v['signable_type'] === 'kinerja_ops') {
             $participant = $record;
             if ($v['role'] === 'employee') {
@@ -1168,6 +1366,15 @@ class KpiController extends Controller
             abort_unless($user->karyawan_id === $participant->atasan_langsung_id, 403, 'Hanya Atasan Langsung snapshot yang berwenang menandatangani Nilai Akhir.');
         }
 
+        $signaturePath = $employee->foto_tanda_tangan;
+        if ($v['signable_type'] === 'kinerja_individu') {
+            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
+            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Tanda tangan Atasan Langsung belum tersedia.');
+            $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
+            $signaturePath = 'kpi/individual-signatures/'.$record->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan gagal disimpan.');
+        }
+
         // Idempotent signature creation/update
         KpiSignature::updateOrCreate(
             [
@@ -1177,13 +1384,17 @@ class KpiController extends Controller
             ],
             [
                 'source' => 'manual',
-                'signed_for_user_id' => $user->id,
+                'signed_for_user_id' => $v['signable_type'] === 'kinerja_individu' ? $participant->karyawan?->user?->id : $user->id,
                 'signed_by_user_id' => $user->id,
-                'signature_path' => $employee->foto_tanda_tangan,
-                'signed_at' => now('Asia/Jakarta'),
+                'signature_path' => $signaturePath,
+                'signed_at' => $v['signable_type'] === 'kinerja_individu' ? KpiClock::now() : now('Asia/Jakarta'),
                 'reason' => 'Manual Signature',
             ]
         );
+
+        if ($v['signable_type'] === 'kinerja_individu') {
+            $record->update(['status' => 'approved']);
+        }
 
         return back()->with('success', 'Tanda tangan berhasil disimpan.');
     }
@@ -1560,7 +1771,7 @@ class KpiController extends Controller
      */
     private function isHardWindowActive(KpiPeriod $period): bool
     {
-        $now = now('Asia/Jakarta');
+        $now = $this->kpiDebugNow();
 
         $perfMonth = $period->bulan;
         $perfYear = $period->tahun;
@@ -1568,7 +1779,7 @@ class KpiController extends Controller
         $windowStart = Carbon::create($perfYear, $perfMonth, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay();
         $windowEnd = Carbon::create($perfYear, $perfMonth, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->addDay()->endOfDay();
 
-        return $now->betweenInclusive($windowStart, $windowEnd);
+        return $now->betweenIncluded($windowStart, $windowEnd);
     }
 
     /**
@@ -1587,6 +1798,49 @@ class KpiController extends Controller
         }
 
         return array_unique($all);
+    }
+
+    /**
+     * Resolve the live employee hierarchy for KPI-Karyawan monitoring.
+     * A visited set prevents malformed circular reporting lines from looping forever.
+     */
+    private function getCurrentSubordinateKaryawanIds(int $managerId): array
+    {
+        $employees = Karyawan::query()
+            ->where('status_keaktifan', 'aktif')
+            ->get(['id', 'atasan_langsung_id']);
+        $children = $employees->groupBy(fn (Karyawan $employee) => (string) $employee->atasan_langsung_id);
+        $frontier = [$managerId];
+        $visited = [$managerId => true];
+        $result = [];
+
+        while ($frontier) {
+            $next = [];
+            foreach ($frontier as $parentId) {
+                foreach ($children->get((string) $parentId, collect()) as $employee) {
+                    if (isset($visited[$employee->id])) {
+                        continue;
+                    }
+                    $visited[$employee->id] = true;
+                    $result[] = $employee->id;
+                    $next[] = $employee->id;
+                }
+            }
+            $frontier = $next;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Dirut may be stored as "Dirut" or "Direktur Utama" in master Jabatan.
+     * Both represent the executive exclusion in the KPI PRD.
+     */
+    private function isExcludedKpiPosition(?string $position): bool
+    {
+        $normalized = mb_strtolower(trim((string) $position));
+
+        return in_array($normalized, ['dirut', 'direktur', 'direktur utama'], true);
     }
 
     /**

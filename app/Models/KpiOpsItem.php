@@ -9,11 +9,12 @@ class KpiOpsItem extends Model
     protected $guarded = [];
 
     protected $casts = [
-        'target_item' => 'float',
-        'realisasi_item' => 'float',
-        'pencapaian_persen' => 'float',
-        'bobot_item' => 'float',
+        'target_unit' => 'decimal:4',
+        'target_bulanan' => 'decimal:4',
+        'beban_target' => 'decimal:4',
+        'hasil' => 'decimal:4',
         'nilai_item' => 'float',
+        'submitted_at' => 'datetime',
     ];
 
     public function participant(): BelongsTo
@@ -21,4 +22,3 @@ class KpiOpsItem extends Model
         return $this->belongsTo(KpiParticipant::class, 'kpi_participant_id');
     }
 }
-

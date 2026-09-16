@@ -8,18 +8,25 @@ class KpiIndividualScore extends Model
 {
     protected $guarded = [];
 
-    protected $casts = [
-        'submitted_at' => 'datetime',
-        'capaian_kinerja' => 'float',
-        'pemeliharaan_aset' => 'float',
-        'kebersihan_kerapihan' => 'float',
-        'total_ki_raw' => 'float',
-        'score_ki_final' => 'float',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'capaian_departemen' => 'decimal:2',
+            'perawatan_aset' => 'decimal:2',
+            'kebersihan_kerapihan' => 'decimal:2',
+            'score' => 'decimal:2',
+            'parameter_snapshot' => 'array',
+            'submitted_at' => 'datetime',
+        ];
+    }
 
     public function participant(): BelongsTo
     {
         return $this->belongsTo(KpiParticipant::class, 'kpi_participant_id');
     }
-}
 
+    public function signatures()
+    {
+        return $this->morphMany(KpiSignature::class, 'signable');
+    }
+}

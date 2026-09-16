@@ -38,7 +38,7 @@ const canAccessAttendance = computed(() => attendancePermissions.value.canView ?
 const attendanceMenuLabel = computed(() => attendancePermissions.value.canManage ? 'Kelola Absensi' : 'Data Absensi');
 const kpiRouteActive = computed(() => page.url.startsWith('/dashboard/kpi'));
 const kpiPermissions = computed(() => page.props.auth?.kpi ?? {});
-const isExecutive = computed(() => ['dirut', 'direktur'].includes(String(props.user?.position || '').toLowerCase()));
+const isExecutive = computed(() => ['dirut', 'direktur', 'direktur utama'].includes(String(props.user?.position || '').trim().toLowerCase()));
 const showIndividuGroup = computed(() => !isExecutive.value);
 const activePeriodId = computed(() => page.props.auth?.kpi?.activePeriodId ?? page.props.period?.id ?? null);
 const showEmployeesMenu = computed(() => kpiPermissions.value.isSupervisor || kpiPermissions.value.isHrdOrAdmin);
@@ -195,6 +195,7 @@ watch(
                         <svg :class="[kpiExpanded ? 'rotate-180' : '', sidebarCollapsed ? 'lg:hidden' : '']" class="ml-auto h-4 w-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg>
                     </button>
                     <div v-show="kpiExpanded" id="kpi-navigation" :class="sidebarCollapsed ? 'lg:hidden' : ''" class="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3">
+                        <Link v-if="kpiPermissions.isHrdOrAdmin" :href="route('dashboard.kpi.index')" :class="route().current('dashboard.kpi.index') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Periode KPI</Link>
                         <!-- Group 1: Individu -->
                         <div v-if="showIndividuGroup" class="space-y-1">
                             <button type="button" class="flex w-full items-center justify-between px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-400" @click="kpiIndividuExpanded = !kpiIndividuExpanded">

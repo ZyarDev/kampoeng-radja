@@ -3,17 +3,45 @@
 
 **Nama Sistem:** Sistem Informasi Terintegrasi Kampoeng Radja  
 **Modul:** KPI (Key Performance Indicator)  
-**Status Dokumen:** FINAL  
-**Versi:** September 2026  
-**Timezone Sistem:** Asia/Jakarta (WIB)
+**Status Dokumen:** Working Baseline — Updated  
+**Periode Dokumen:** September 2026  
+**Catatan:** Dokumen ini merupakan baseline kebutuhan bisnis terbaru. Beberapa keputusan masih ditandai sebagai **OPEN DECISION** dan tidak boleh ditentukan sendiri oleh implementor/agent tanpa konfirmasi.
 
 ---
 
-# 1. Pendahuluan
+# 0. LEGENDA STATUS
 
-Modul KPI digunakan untuk mengelola proses evaluasi kinerja karyawan Kampoeng Radja secara terpusat, terjadwal, bertingkat, dan terhubung dengan struktur organisasi perusahaan.
+## 0.1 Status Implementasi
 
-Sebelumnya, proses KPI dijalankan melalui beberapa file spreadsheet terpisah yang mencakup:
+| Penanda | Arti |
+|---|---|
+| ✅ **SUDAH** | Sudah tersedia/diimplementasikan pada sistem saat ini |
+| 🟡 **SEBAGIAN** | Fondasi tersedia tetapi fungsi KPI belum selesai |
+| ⏳ **BELUM** | Belum diimplementasikan |
+| ⚠️ **OPEN DECISION** | Masih menunggu keputusan pimpinan/tim |
+
+> **Penting:** Modul KPI secara keseluruhan **BELUM DIIMPLEMENTASIKAN**. Status ✅ hanya berlaku pada fondasi sistem yang sudah ada dan akan digunakan KPI, seperti data karyawan, atasan langsung, penempatan, role, dan foto tanda tangan.
+
+## 0.2 Indikator Status Operasional KPI
+
+| Indikator | Makna |
+|---|---|
+| ⚪ **Belum Diisi** | Record belum dikerjakan |
+| 🔵 **Sedang Diproses** | Record sedang dalam periode pengerjaan |
+| 🟡 **Menunggu TTD/Approval** | Pengisian selesai, menunggu pihak yang wajib menandatangani |
+| 🟢 **Selesai** | Pengisian dan tanda tangan wajib lengkap |
+| 🔴 **Tidak Mengisi / Terlewat** | Deadline lewat tanpa pengisian yang diwajibkan |
+| 🔒 **Terkunci** | Record tidak dapat diedit lagi |
+| ⏰ **Deadline Dekat** | Periode akan segera berakhir |
+| ⚠️ **Perlu Tindakan** | Ada aksi yang harus dilakukan pengguna |
+| 🤖 **Auto Submitted** | Sistem mengirim record otomatis karena deadline lewat |
+| 🤖 **Auto Signed** | Sistem menandatangani otomatis karena deadline tanda tangan lewat |
+
+---
+
+# 1. LATAR BELAKANG
+
+Proses KPI Kampoeng Radja sebelumnya berjalan menggunakan file spreadsheet dengan beberapa form terpisah, antara lain:
 
 1. Daily Report
 2. Kinerja Individu
@@ -23,62 +51,65 @@ Sebelumnya, proses KPI dijalankan melalui beberapa file spreadsheet terpisah yan
 6. Reward & Punishment
 7. Nilai Akhir
 
-Sistem KPI yang dikembangkan harus menyatukan seluruh proses tersebut ke dalam satu workflow terintegrasi yang:
+Proses tersebut melibatkan beberapa pihak secara bergantian, yaitu karyawan, atasan langsung, atasan kedua, penilai bulanan, HRD/Direktur, serta pihak Super Admin.
 
-- terikat pada periode;
-- mengikuti struktur atasan dan bawahan;
-- membedakan pihak yang mengisi, menilai, memantau, dan menandatangani;
-- memiliki deadline otomatis;
-- mendukung approval/tanda tangan;
-- menyimpan histori struktur dan parameter KPI per periode;
-- menghasilkan Nilai Akhir secara otomatis;
-- menyediakan akses administratif penuh bagi Super Admin;
-- menetapkan Direktur/HRD sebagai pelaksana operasional utama administrasi KPI.
+Modul KPI pada Sistem Informasi Terintegrasi Kampoeng Radja harus memindahkan proses tersebut menjadi workflow terpusat yang:
+
+- mengikuti periode secara tegas;
+- mengikuti struktur atasan-bawahan perusahaan;
+- mengetahui siapa yang bertanggung jawab mengisi;
+- mengetahui siapa yang hanya memantau;
+- mengetahui siapa yang wajib menandatangani;
+- mengunci data berdasarkan approval dan deadline;
+- menjaga seluruh bagian KPI tetap berada pada periode yang sama;
+- menghasilkan Nilai Akhir secara otomatis.
+
+**Status Implementasi:** ⏳ **BELUM**
 
 ---
 
-# 2. Tujuan
+# 2. TUJUAN
 
 Modul KPI bertujuan untuk:
 
-1. Memusatkan pengelolaan seluruh proses KPI.
-2. Mengurangi penggunaan file Excel terpisah.
-3. Memastikan proses penilaian mengikuti timeline perusahaan.
-4. Memudahkan atasan memantau KPI bawahan.
-5. Mendukung approval/tanda tangan berdasarkan struktur organisasi.
-6. Mendukung penilaian Monthly oleh penilai berbeda setiap periode.
-7. Menghubungkan aktivitas harian, evaluasi diri, target kerja, MPA, absensi, reward/punishment, dan Nilai Akhir.
-8. Menjaga histori KPI tetap konsisten meskipun struktur organisasi berubah.
-9. Menyediakan akses administrasi kepada Super Admin.
-10. Menyelesaikan siklus KPI sebelum proses penggajian.
+1. Memusatkan proses penilaian kinerja karyawan.
+2. Menghilangkan ketergantungan pada banyak file Excel terpisah.
+3. Mengatur deadline pengisian secara otomatis.
+4. Memudahkan atasan memantau KPI seluruh bawahannya.
+5. Mendukung approval/tanda tangan digital berbasis struktur organisasi.
+6. Mendukung penilaian Monthly oleh penilai yang berubah setiap periode.
+7. Menghubungkan aktivitas karyawan, target, penilaian umum, absensi, reward/punishment, dan Nilai Akhir.
+8. Menyediakan akses administratif kepada Super Admin.
+9. Menetapkan Direktur/HRD sebagai pihak yang secara operasional bertanggung jawab terhadap pengelolaan parameter dan penyelesaian administrasi KPI.
+10. Memastikan nilai KPI siap sebelum proses penggajian.
 
 ---
 
-# 3. Fondasi Sistem yang Sudah Tersedia
+# 3. FONDASI SISTEM YANG SUDAH TERSEDIA
 
-| Fondasi | Status |
-|---|---|
-| Data Karyawan | Sudah |
-| Jabatan | Sudah |
-| Departemen | Sudah |
-| Penempatan | Sudah |
-| Atasan Langsung | Sudah |
-| Relasi Bawahan | Sudah |
-| Foto Tanda Tangan | Sudah |
-| Role `super_admin`, `admin`, `user` | Sudah |
-| Sinkronisasi Role berdasarkan Jabatan | Sudah |
-| Menu KPI | Belum |
-| Database KPI | Belum |
-| Workflow KPI | Belum |
-| Scheduler KPI | Belum |
+| Fondasi | Status | Keterangan |
+|---|---|---|
+| Data Karyawan | ✅ SUDAH | Sudah tersedia |
+| Jabatan | ✅ SUDAH | Wajib pada karyawan |
+| Departemen | ✅ SUDAH | Nullable |
+| Penempatan | ✅ SUDAH | Master data resmi |
+| Atasan Langsung | ✅ SUDAH | Self-reference `karyawan` |
+| Relasi Bawahan | ✅ SUDAH | Dapat diturunkan dari atasan langsung |
+| Foto Tanda Tangan | ✅ SUDAH | Tersimpan pada profil karyawan |
+| Role Sistem | ✅ SUDAH | `super_admin`, `admin`, `user` |
+| Sinkronisasi Role Berdasarkan Jabatan | ✅ SUDAH | Sudah ada resolver |
+| Menu KPI | ⏳ BELUM | Belum dibuat |
+| Database KPI | ⏳ BELUM | Belum dibuat |
+| Workflow KPI | ⏳ BELUM | Belum dibuat |
+| Scheduler Deadline KPI | ⏳ BELUM | Belum dibuat |
 
 ---
 
-# 4. Role Sistem dan Kewajiban KPI
+# 4. ROLE SISTEM DAN KEWAJIBAN KPI
 
 ## 4.1 Mapping Role
 
-| Jabatan | Role |
+| Jabatan | Role Sistem |
 |---|---|
 | Dirut | `super_admin` |
 | Direktur | `super_admin` |
@@ -93,74 +124,102 @@ Modul KPI bertujuan untuk:
 | General | `user` |
 | Facility | `user` |
 
-## 4.2 Kewajiban KPI Berdasarkan Jabatan
+**Status:** ✅ **SUDAH**
+
+## 4.2 Role Tidak Sama dengan Kewajiban KPI
 
 ### Dirut
-- Tidak mengisi KPI Individu.
-- Menu **Individu** tidak ditampilkan.
-- Tetap memiliki full access sebagai Super Admin.
-- Seluruh tombol aksi administratif Super Admin tetap tersedia.
-- Bukan pelaksana normal administrasi KPI.
+- Role: `super_admin`
+- Tidak berkewajiban mengisi KPI Individu.
+- Menu **Individu harus di-hide**.
+- Memiliki full access sebagai Super Admin.
+- Tombol aksi administratif Super Admin tetap tersedia.
+- Secara SOP bukan pelaksana normal pengisian administratif KPI.
+
+**Status hide menu Individu:** ⏳ **BELUM**
 
 ### Direktur / HRD
-- Tidak mengisi KPI Individu.
-- Menu **Individu** tidak ditampilkan.
-- Memiliki full access sebagai Super Admin.
-- Menjadi pelaksana operasional utama administrasi KPI.
-- Mengelola parameter KPI.
-- Menilai karyawan yang sedang menjadi penilai MPA.
-- Melengkapi kekurangan MPA jika penilai gagal menyelesaikan tugas.
+- Role: `super_admin`
+- Tidak berkewajiban mengisi KPI Individu.
+- Menu **Individu harus di-hide**.
+- Memiliki full access.
+- Merupakan pihak yang **secara operasional bertanggung jawab** mengelola administrasi KPI.
+- Menjadi pelaksana normal pengisian parameter KPI.
+- Melanjutkan record Monthly setelah penilai selesai.
 - Mengisi Penilaian Absensi.
-- Mengisi Reward & Punishment.
-- Menyelesaikan dan mem-publish Monthly secara keseluruhan.
+- Mengisi Reward/Punishment.
+- Menilai karyawan yang menjadi penilai bulanan.
+- Dapat melengkapi kekurangan penilaian setelah periode MPA ditutup.
+- Menyelesaikan/publish Monthly secara massal per periode.
+
+**Status:** ⏳ **BELUM**
 
 ### Manajer
-- Tetap wajib mengisi KPI Individu.
-- Menu **Individu** ditampilkan.
-- Memiliki full access sebagai Super Admin.
-- Memiliki KPI-Karyawan.
-- Seluruh tombol administratif Super Admin tetap tampil.
-- Bukan pelaksana normal administrasi KPI; tanggung jawab operasional tetap pada Direktur/HRD.
+- Role: `super_admin`
+- **Tetap wajib mengisi KPI Individu.**
+- Menu Individu tetap tampil.
+- Memiliki full access dan seluruh tombol aksi Super Admin.
+- Karena memiliki bawahan, menu KPI-Karyawan tampil.
+- Secara SOP bukan pelaksana normal administrasi KPI; tanggung jawab tersebut tetap pada Direktur/HRD.
+
+**Status:** ⏳ **BELUM**
 
 ### SPV
+- Role: `admin`
 - Wajib mengisi KPI Individu.
-- KPI-Karyawan tampil apabila mempunyai bawahan.
-- MPA aktif apabila ditetapkan sebagai penilai.
+- KPI-Karyawan tampil apabila memiliki bawahan.
+- MPA muncul apabila ditetapkan sebagai penilai pada periode tertentu.
+
+**Status:** ⏳ **BELUM**
 
 ### User
 - Wajib mengisi KPI Individu.
-- KPI-Karyawan hanya tampil apabila mempunyai bawahan.
-- MPA aktif apabila ditetapkan sebagai penilai.
+- KPI-Karyawan hanya tampil jika mempunyai bawahan.
+- MPA hanya aktif jika ditunjuk sebagai penilai periode.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 5. Prinsip Akses Super Admin
+# 5. PRINSIP AKSES SUPER ADMIN
 
-Semua Super Admin mempunyai full capability:
+Semua Super Admin:
+
+- Dirut
+- Direktur
+- Manajer
+
+memiliki **full access secara sistem**.
+
+Artinya tombol aksi administratif tetap dapat tampil untuk seluruh Super Admin.
+
+Namun tanggung jawab operasional dibedakan melalui SOP:
 
 ```text
-Dirut
-Direktur
-Manajer
+Capability Sistem
+Dirut / Direktur / Manajer
+        = Full Access
+
+Pelaksana Normal Administrasi KPI
+        = Direktur / HRD
 ```
 
-Seluruh tombol aksi administratif tetap tersedia untuk ketiganya.
+Dengan demikian:
 
-Namun tanggung jawab operasional ditetapkan sebagai:
+- Dirut tidak perlu di-hide tombol CRUD.
+- Manajer tidak perlu di-hide tombol CRUD.
+- Direktur/HRD tetap menjadi pihak yang seharusnya melakukan pengisian administratif.
+- Sistem tidak menggunakan penyembunyian tombol untuk membedakan tanggung jawab bisnis Super Admin.
 
-```text
-Full Capability Sistem       = Semua Super Admin
-Pelaksana Normal Administrasi = Direktur / HRD
-```
-
-Sistem tidak membedakan tanggung jawab bisnis Super Admin melalui hide/disable tombol.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 6. Struktur Menu KPI
+# 6. STRUKTUR MENU KPI
 
 ```text
 KPI
+│
 ├── Individu
 │   ├── Daily Report
 │   ├── Kinerja Individu
@@ -173,27 +232,34 @@ KPI
 └── MPA
 ```
 
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 7. Visibilitas Menu
+# 7. VISIBILITAS MENU
 
-| Pengguna | Individu | KPI-Karyawan | MPA |
-|---|---|---|---|
-| Dirut | Hide | Full Access | Full Access |
-| Direktur/HRD | Hide | Full Access | Full Access |
-| Manajer | Tampil | Full Access | Full Access |
-| SPV dengan bawahan | Tampil | Tampil | Jika ditunjuk |
+| Jenis Pengguna | Individu | KPI-Karyawan | MPA |
+|---|---:|---:|---:|
+| Dirut | Hide | Full access | Full access |
+| Direktur/HRD | Hide | Full access | Full access |
+| Manajer | Tampil | Full access | Full access |
+| SPV punya bawahan | Tampil | Tampil | Jika ditunjuk |
 | SPV tanpa bawahan | Tampil | Hide | Jika ditunjuk |
-| User dengan bawahan | Tampil | Tampil | Jika ditunjuk |
+| User punya bawahan | Tampil | Tampil | Jika ditunjuk |
 | User tanpa bawahan | Tampil | Hide | Jika ditunjuk |
 
+> MPA pada Super Admin selalu dapat diakses karena full access.  
+> Pada Admin/User, MPA hanya aktif ketika pengguna ditunjuk sebagai penilai untuk suatu periode.
+
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 8. Periodisasi KPI
+# 8. PERIODISASI KPI
 
-## 8.1 Prinsip Periode
+## 8.1 Prinsip Utama
 
-Semua KPI bulanan menggunakan **bulan performa**, bukan bulan saat form diisi.
+Semua KPI bulanan wajib menggunakan **bulan performa**.
 
 Contoh:
 
@@ -204,110 +270,81 @@ periode_bulan        : 8
 periode_tahun        : 2026
 ```
 
-## 8.2 Peserta KPI Bulanan
+Tidak boleh menyimpan sebagai periode September hanya karena form diisi pada September.
 
-Peserta KPI periode adalah:
+## 8.2 Siklus Bulanan
 
-- karyawan yang masih aktif pada hari terakhir bulan performa;
-- bukan Dirut;
-- bukan Direktur.
-
-Contoh:
+Contoh periode performa **Agustus 2026**:
 
 ```text
-Masuk 20 Agustus dan aktif pada 31 Agustus
-→ menjadi peserta KPI Agustus
+Agustus 2026
+    ↓
+31 Agustus 2026
+Deadline penetapan penilai Agustus
+    ↓
+1–2 September
+Kinerja Individu + Kinerja OPS
+    ↓
+1–5 September
+MPA oleh penilai
+    ↓
+6–8 September
+HRD melanjutkan Monthly
+    ↓
+s.d. 9 September
+Tanda tangan
+    ↓
+9 September 23:59 WIB
+Auto-sign
+    ↓
+10 September
+Tanda tangan Nilai Akhir
 ```
 
-```text
-Keluar 25 Agustus dan sudah nonaktif sebelum 31 Agustus
-→ tidak dibuatkan siklus KPI Agustus
-```
+Timezone:
 
-Daily sebelum tanggal keluar tetap menjadi histori.
+**Asia/Jakarta (WIB)**
 
-## 8.3 Atasan Langsung
-
-Untuk seluruh peserta KPI:
-
-```text
-atasan_langsung_id
-```
-
-secara operasional wajib tersedia sebelum periode KPI dibentuk.
-
-Jika kosong:
-
-```text
-KPI Configuration Error
-```
-
-HRD wajib memperbaiki struktur karyawan. Sistem tidak boleh menebak atasan.
-
-## 8.4 Snapshot Struktur Organisasi
-
-Saat periode dibentuk, sistem menyimpan snapshot:
-
-- jabatan;
-- departemen;
-- penempatan;
-- atasan langsung;
-- atasan kedua.
-
-Minimal:
-
-```text
-jabatan_id + label snapshot
-departemen_id + label snapshot
-penempatan_id + label snapshot
-atasan_langsung_id snapshot
-atasan_kedua_id snapshot
-```
-
-Perubahan struktur pada periode berikutnya tidak mengubah histori periode lama.
-
-Daily Report menyimpan snapshot atasan langsung pada tanggal Daily tersebut.
-
-## 8.5 Precision
-
-- kalkulasi intermediate: minimal 4 angka desimal;
-- nilai komponen final: 2 angka desimal;
-- Nilai Akhir: 2 angka desimal.
-
-Contoh:
-
-```text
-78.567 → 78.57
-94.925 → 94.93
-```
+**Status periodisasi:** ⏳ **BELUM**
 
 ---
 
-# 9. Timeline Resmi KPI
+# 9. TIMELINE RESMI KPI
 
 | Proses | Waktu |
 |---|---|
-| Daily Report | Setiap hari kerja aktual |
-| Penetapan penilai MPA | Maksimal hari terakhir bulan performa pukul 23:59 WIB |
+| Daily Report | Setiap hari |
+| Penetapan penilai periode | Maksimal hari terakhir bulan performa |
 | Kinerja Individu | Tanggal 1–2 bulan berikutnya |
 | Kinerja OPS | Tanggal 1–2 bulan berikutnya |
 | MPA Penilai | Tanggal 1–5 |
 | Monthly bagian HRD | Tanggal 6–8 |
-| TTD KI / K-OPS / Monthly | Maksimal tanggal 9 |
-| Auto-Sign | Tanggal 9 pukul 23:59 WIB |
+| TTD Kinerja Individu | Maksimal tanggal 9 |
+| TTD Kinerja OPS | Maksimal tanggal 9 |
+| TTD Monthly | Setelah publish HRD sampai tanggal 9 |
+| Auto-sign | Tanggal 9 pukul 23:59 WIB |
 | TTD Nilai Akhir | Tanggal 10 |
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 10. Individu — Daily Report
+# 10. INDIVIDU — DAILY REPORT
 
 ## 10.1 Pengguna
 
-Wajib bagi seluruh karyawan peserta KPI kecuali Dirut dan Direktur.
+Daily Report wajib diisi seluruh karyawan kecuali:
 
-Manajer tetap wajib mengisi.
+- Dirut
+- Direktur
 
-## 10.2 Header
+Manajer tetap wajib.
+
+**Status:** ⏳ **BELUM**
+
+## 10.2 Header Daily Report
+
+Data identitas:
 
 - Nama
 - NIK
@@ -318,7 +355,12 @@ Manajer tetap wajib mengisi.
 - Atasan Langsung
 - Tanggal
 
-## 10.3 Tabel
+Data identitas ditarik otomatis dari data Karyawan.
+
+**Status fondasi:** ✅ **SUDAH**  
+**Status integrasi KPI:** ⏳ **BELUM**
+
+## 10.3 Tabel Daily Report
 
 | Field | Pengisi |
 |---|---|
@@ -327,174 +369,221 @@ Manajer tetap wajib mengisi.
 | Keterangan | Karyawan |
 | Bukti | Karyawan — upload foto |
 
+**Status:** ⏳ **BELUM**
+
 ## 10.4 Batas Pengisian
 
-Daily hanya dapat diisi:
+Karyawan hanya boleh mengisi:
 
 - hari ini;
 - kemarin.
 
-Contoh pada 3 September:
+Contoh:
+
+Tanggal saat ini: 3 September
 
 ```text
 2 September → boleh isi/edit
 3 September → boleh isi/edit
-1 September → tidak boleh
+1 September → tidak boleh isi/edit
 ```
 
-Jika sudah approved, Daily tetap locked walaupun masih berada dalam periode edit.
+Pengecualian: record yang sudah approved tetap locked meskipun secara tanggal masih editable.
 
-## 10.5 Hari Kerja Aktual
+**Status:** ⏳ **BELUM**
 
-Daily wajib hanya ketika karyawan benar-benar seharusnya bekerja/hadir.
+## 10.5 Simpan dan Approval
 
-Daily wajib untuk:
-
-- Hari Normal;
-- Hari Event;
-- hari kerja aktual lainnya.
-
-Daily tidak memicu `Tidak Mengisi` apabila:
-
-- izin;
-- sakit;
-- off;
-- libur;
-- tidak dijadwalkan;
-- alfa/tidak hadir;
-- sudah nonaktif.
-
-Alfa tidak diberi penalti Daily tambahan karena telah ditangani Absensi/Disiplin.
-
-## 10.6 Approval
-
-Simpan tidak langsung mengunci record.
+Saat karyawan menyimpan:
 
 ```text
-Karyawan Simpan
-→ Menunggu TTD Atasan Langsung
-→ Atasan Approve
-→ Locked
+Draft/Isian
+   ↓
+Simpan
+   ↓
+Menunggu TTD Atasan Langsung
 ```
 
-Selama belum approved dan masih dalam periode edit, karyawan boleh memperbarui Daily.
+Simpan **tidak langsung mengunci** Daily.
 
-## 10.7 Tanda Tangan
+Selama:
+- belum approved; dan
+- masih dalam periode edit,
+
+karyawan masih boleh mengubah.
+
+Setelah Atasan Langsung approve:
+
+```text
+Approved
+   ↓
+Locked
+```
+
+**Status:** ⏳ **BELUM**
+
+## 10.6 Tanda Tangan Daily
 
 Wajib:
 
-- Atasan Langsung berdasarkan snapshot Daily.
+- Atasan Langsung.
 
-Manual sign menyimpan:
+Sistem menyimpan minimal:
 
-- approver;
-- timestamp;
-- status;
-- referensi tanda tangan.
+- `approved_by`
+- `approved_at`
+- status approval
+- sumber manual/otomatis jika nanti diperlukan
 
-Daily tidak terkena auto-sign bulanan.
+**Status:** ⏳ **BELUM**
+
+## 10.7 Indikator Daily pada KPI-Karyawan
+
+Contoh:
+
+```text
+Jon
+[ DR ⚠️ ] [ KI ] [ K-OPS ] [ M ] [ NA ]
+```
+
+Indikator dapat menunjukkan:
+
+- ada Daily baru;
+- ada Daily menunggu tanda tangan;
+- seluruh Daily sudah ditandatangani;
+- terdapat Daily tidak diisi.
+
+**Status:** ⏳ **BELUM**
 
 ## 10.8 Tanda Tangani Semua
 
-Pada Daily bawahan langsung tersedia:
-
-**Tanda Tangani Semua**
-
-Aksi ini:
-
-1. hanya berlaku untuk bawahan langsung;
-2. hanya menandatangani Daily yang masih pending;
-3. tidak mengubah Daily yang sudah approved;
-4. membutuhkan konfirmasi;
-5. mencatat approver dan timestamp untuk setiap record.
-
-## 10.9 Tidak Mengisi dan SP1
-
-Counter `Tidak Mengisi Daily` dihitung **per bulan/periode**.
+Pada:
 
 ```text
-3× Tidak Mengisi dalam bulan yang sama
-→ Perlu Tindak Lanjut SP1
+KPI-Karyawan
+→ Bawahan Langsung
+→ Daily Report
 ```
 
-Counter reset bulan berikutnya, namun histori tetap disimpan.
+tersedia tombol:
 
-Sistem **tidak menerbitkan SP1 otomatis**.
+**`Tanda Tangani Semua`**
 
-HRD menerima indikator dan mengonfirmasi/mencatat tindak lanjut SP1.
+Aturan:
+
+1. Hanya digunakan terhadap Daily milik bawahan langsung.
+2. Menandatangani seluruh Daily yang masih menunggu approval.
+3. Record yang sudah approved tidak disentuh.
+4. Wajib ada konfirmasi.
+5. Setelah berhasil, indikator pending diperbarui.
+6. Setiap record tetap menyimpan waktu dan identitas approver.
+
+**Status:** ⏳ **BELUM**
+
+## 10.9 Daily Tidak Diisi
+
+Jika deadline lewat:
+
+- record/hari ditandai `Tidak Mengisi`;
+- tiga kali tidak mengisi → SP1.
+
+⚠️ **OPEN DECISION:**
+- tiga kali dihitung per bulan; atau
+- akumulasi lintas bulan.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 11. Individu — Kinerja Individu
+# 11. INDIVIDU — KINERJA INDIVIDU
 
 ## 11.1 Pengguna
 
-Diisi seluruh peserta KPI kecuali Dirut dan Direktur.
+Diisi:
+
+- seluruh karyawan wajib KPI Individu;
+- kecuali Dirut dan Direktur.
 
 Periode:
 
-**tanggal 1–2 bulan berikutnya**
+- tanggal 1–2 bulan berikutnya.
 
-## 11.2 Komponen Tetap
+**Status:** ⏳ **BELUM**
+
+## 11.2 Struktur
+
+Header mengikuti data Karyawan.
+
+Tabel:
+
+| Kontribusi untuk Perusahaan | Evaluasi Diri |
+|---|---:|
+| Capaian Departemen | 1–100 |
+| Perawatan Aset Kerja Sesuai Bidang | 1–100 |
+| Kebersihan & Kerapihan Lingkungan Kerja | 1–100 |
+
+## 11.3 Pembagian Pengisian
+
+### Direktur / HRD
+Mengelola atau menentukan:
+
+- komponen Kontribusi untuk Perusahaan;
+- indikator/kriteria apabila diperlukan;
+- parameter administrasi terkait Kinerja Individu.
+
+### Karyawan
+Mengisi:
+
+- angka Evaluasi Diri.
+
+Input Evaluasi Diri:
+
+**1–100**
+
+**Status:** ⏳ **BELUM**
+
+## 11.4 Bobot
 
 | Komponen | Bobot |
 |---|---:|
 | Capaian Departemen | 70% |
-| Perawatan Aset Kerja sesuai bidang | 5% |
-| Kebersihan & Kerapihan Lingkungan Kerja | 5% |
-| **Total Normal** | **80%** |
+| Perawatan Aset | 5% |
+| Kebersihan & Kerapihan | 5% |
+| **Total Maksimum Normal** | **80** |
 
-Nama komponen utama dan bobot bersifat **fixed** pada baseline final.
-
-HRD dapat mengelola:
-
-- target;
-- deskripsi;
-- indikator pendukung;
-- kriteria;
-- isi dinamis lainnya.
-
-Tetapi tidak mengubah tiga nama komponen utama dan bobotnya.
-
-## 11.3 Pengisian
-
-Karyawan mengisi:
-
-- Evaluasi Diri: 1–100.
-
-HRD mengelola parameter pendukung pada tiga komponen tetap tersebut.
-
-## 11.4 Formula
+Rumus:
 
 ```text
 Nilai KI =
-(Capaian Departemen × 0.70)
-+ (Perawatan Aset × 0.05)
-+ (Kebersihan & Kerapihan × 0.05)
+(Capaian Departemen × 0,70)
++ (Perawatan Aset × 0,05)
++ (Kebersihan & Kerapihan × 0,05)
 ```
 
 Contoh:
 
 ```text
-100 × 0.70 = 70
-80 × 0.05  = 4
-90 × 0.05  = 4.5
+100 × 0,70 = 70
+80 × 0,05  = 4
+90 × 0,05  = 4,5
 
-Total = 78.5
+Total KI = 78,5
 ```
+
+**Status perhitungan:** ⏳ **BELUM**
 
 ## 11.5 Deadline dan Auto Submit
 
-Lewat tanggal 2:
+Setelah tanggal 2:
 
-```text
-input_value = NULL
-status      = not_filled
-submit_type = automatic
-score       = 0
-```
+- akses input karyawan ditutup;
+- record otomatis submitted;
+- jika belum diisi, record tetap terkirim dalam keadaan kosong;
+- sistem memberi penanda **Tidak Mengisi**.
 
-Dengan begitu sistem dapat membedakan nilai 0 yang benar-benar diinput dengan tidak mengisi sama sekali.
+⚠️ Perlakuan numerik final untuk record kosong tidak boleh diasumsikan tanpa rule eksplisit.
+
+**Status:** ⏳ **BELUM**
 
 ## 11.6 Tanda Tangan
 
@@ -502,45 +591,49 @@ Wajib:
 
 - Atasan Langsung.
 
-Setelah approval:
+Setelah approved:
 
-- locked.
+- record locked.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 12. Individu — Kinerja OPS
+# 12. INDIVIDU — KINERJA OPS / INDEKS PRESTASI KERJA PERORANGAN
 
-## 12.1 Konsep
+## 12.1 Tujuan
 
-Kinerja OPS dikonfigurasi **per karyawan per periode**.
+Mengukur capaian pekerjaan/target operasional karyawan per bulan berdasarkan target yang telah ditentukan HRD/Direktur.
 
-Template per jabatan/penempatan dapat ditambahkan di kemudian hari, tetapi record final tetap milik:
+Periode input karyawan:
 
-```text
-karyawan + periode
-```
+**tanggal 1–2 bulan berikutnya**
 
-## 12.2 Field
+**Status:** ⏳ **BELUM**
 
-| Field | Sumber/Pengisi |
-|---|---|
-| No | Sistem |
-| KPI Item | HRD |
-| Maintenance | HRD |
-| Target Unit | HRD |
-| Tanda (+/-) | HRD |
-| Beban Target | Sistem |
-| Sumber Data | Sistem dari snapshot Jabatan |
-| Frekuensi | HRD |
-| Bulan | Sistem dari periode |
-| Target Bulanan | Sistem = Target Unit |
-| Hasil | Karyawan |
-| Aktivitas Pencapaian — teks | Karyawan |
-| Aktivitas Pencapaian — foto | Karyawan |
+## 12.2 Struktur Field
 
-## 12.3 Parameter HRD
+| Field | Sumber/Pengisi | Editable Karyawan |
+|---|---|---:|
+| No | Sistem | Tidak |
+| KPI Item | HRD/Direktur | Tidak |
+| Maintenance | HRD/Direktur | Tidak |
+| Target Unit | HRD/Direktur | Tidak |
+| Tanda (+/-) | HRD/Direktur | Tidak |
+| Beban Target (%) | Sistem | Tidak |
+| Sumber Data | Sistem dari Jabatan | Tidak |
+| Frekuensi | HRD/Direktur | Tidak |
+| Bulan | Sistem dari Periode KPI | Tidak |
+| Target Bulanan | Berdasarkan konfigurasi target | Tidak |
+| Hasil | Karyawan | Ya |
+| Aktivitas Pencapaian — teks | Karyawan | Ya |
+| Aktivitas Pencapaian — foto | Karyawan | Ya |
 
-Direktur/HRD mengisi:
+**Status:** ⏳ **BELUM**
+
+## 12.3 Field yang Diisi HRD/Direktur
+
+HRD mengisi:
 
 1. KPI Item
 2. Maintenance
@@ -548,87 +641,126 @@ Direktur/HRD mengisi:
 4. Tanda (+/-)
 5. Frekuensi
 
-Semua Super Admin memiliki tombol aksi, tetapi Direktur/HRD adalah pelaksana normal.
+Semua Super Admin memiliki tombol aksi, tetapi Direktur/HRD merupakan pelaksana normal sesuai SOP.
 
-Untuk item aktif:
-
-```text
-Target Unit > 0
-Target Bulanan > 0
-```
-
-Jika item tidak memiliki target pada periode tersebut, item tidak dibuat aktif.
+**Status:** ⏳ **BELUM**
 
 ## 12.4 Field Otomatis
 
 ### Sumber Data
 
-Menggunakan snapshot Jabatan periode.
+Diambil dari:
+
+```text
+karyawan.jabatan
+```
+
+Contoh:
+
+```text
+Merdiansyah
+Jabatan = IT
+Sumber Data = IT
+```
 
 ### Bulan
 
 Diambil dari periode KPI.
 
-### Target Bulanan
-
-```text
-Target Bulanan = Target Unit
-```
-
-Frekuensi hanya menjadi informasi operasional dan tidak ikut scoring pada baseline final.
-
-### Beban Target
-
-Beban Target tetap merupakan **bobot persentase bisnis dari total 10%**, tetapi backend merepresentasikan angka bobot sebagai **percentage points**, bukan pecahan desimal.
-
 Contoh:
 
 ```text
-2.00 = 2 percentage points dari total bobot 10%
+periode_bulan = 8
+→ AGUSTUS
 ```
 
-bukan:
+### Beban Target
 
-```text
-0.02
-```
+Dihitung otomatis dari proporsi `Target Unit`.
 
 Rumus:
 
 ```text
 Beban Target Item =
-(Target Unit Item / Total Target Unit) × 10
+(Target Unit Item / Total Target Unit Seluruh Item)
+× 10
 ```
 
-Contoh:
+Total Beban Target normal:
 
 ```text
-Target Unit: 2,2,2,2,2
-→ Beban: 2.00,2.00,2.00,2.00,2.00
-→ Total = 10.00
+10%
 ```
 
-Contoh:
+#### Contoh A
+
+Target Unit:
 
 ```text
-Target Unit: 5,1,1,1
-→ Beban: 6.25,1.25,1.25,1.25
-→ Total = 10.00
+2, 2, 2, 2, 2
 ```
 
-## 12.5 Pengisian Karyawan
+Total = 10
+
+Masing-masing:
+
+```text
+2 / 10 × 10 = 2%
+```
+
+Hasil:
+
+```text
+2%, 2%, 2%, 2%, 2%
+Total = 10%
+```
+
+#### Contoh B
+
+Target Unit:
+
+```text
+5, 1, 1, 1
+```
+
+Total = 8
+
+Hasil:
+
+```text
+5 / 8 × 10 = 6,25%
+1 / 8 × 10 = 1,25%
+1 / 8 × 10 = 1,25%
+1 / 8 × 10 = 1,25%
+
+Total = 10%
+```
+
+Perhitungan otomatis menjadi default.
+
+Manual hanya menjadi fallback apabila suatu saat ada kebutuhan bisnis yang tidak dapat direpresentasikan formula.
+
+**Status:** ⏳ **BELUM**
+
+## 12.5 Pengisian oleh Karyawan
 
 Karyawan hanya mengisi:
 
-- Hasil;
-- Aktivitas Pencapaian berupa teks;
-- Bukti Aktivitas Pencapaian berupa foto.
+- Hasil
+- Aktivitas Pencapaian berupa teks
+- Bukti Aktivitas Pencapaian berupa foto
 
-## 12.6 Formula Nilai
+Target dan parameter tidak dapat diubah karyawan.
+
+**Status:** ⏳ **BELUM**
+
+## 12.6 Formula Nilai Kinerja OPS
+
+Formula baseline berdasarkan pola worksheet:
 
 ```text
 Nilai Item =
-(Hasil / Target Unit)
+(Hasil / Target)
 × Beban Target
 ```
 
@@ -641,13 +773,13 @@ Contoh:
 
 ```text
 Target = 2
-Hasil  = 2
-Bobot  = 2.00
+Hasil = 2
+Beban = 2
 
-Nilai Item = 2.00
+Nilai Item = 2
 ```
 
-Jika:
+Jika lima item menghasilkan:
 
 ```text
 2 + 2 + 2 + 0 + 2
@@ -656,63 +788,60 @@ Jika:
 maka:
 
 ```text
-Nilai Kinerja OPS = 8.00
+Nilai Kinerja OPS = 8
 ```
 
-Kinerja OPS **boleh melebihi 10** apabila Hasil melampaui Target. Nilai tidak di-clamp.
+### Capaian di Atas Target
 
-## 12.7 Tanda (+/-)
+Nilai **tidak perlu di-clamp** ke maksimum 10 apabila hasil aktual menurut formula melebihi target.
 
-Field tetap tersedia sebagai atribut K-OPS.
+Kelebihan capaian dapat tetap disimpan dan dapat berhubungan dengan insentif tambahan di luar penilaian normal.
 
-**Fungsi matematisnya belum digunakan dalam engine scoring sampai perusahaan memberikan rule final.**
+⚠️ **OPEN DECISION:** fungsi matematis kolom `Tanda (+/-)` belum dijelaskan secara final dan tidak boleh diasumsikan implementor.
 
-Implementor tidak boleh membuat formula sendiri.
+**Status formula:** 🟡 **SEBAGIAN TERDEFINISI**
 
-## 12.8 Deadline
+## 12.7 Deadline
 
 Lewat tanggal 2:
 
-```text
-input = NULL
-status = not_filled
-submit_type = automatic
-score = 0
-```
+- auto-submit;
+- record kosong tetap dikirim;
+- diberi indikator Tidak Mengisi.
 
-## 12.9 Tanda Tangan
+**Status:** ⏳ **BELUM**
+
+## 12.8 Tanda Tangan
 
 Wajib:
 
-- Karyawan bersangkutan;
-- Atasan Langsung.
+1. Karyawan bersangkutan
+2. Atasan Langsung
 
-Jika belum lengkap sebelum deadline, dapat terkena auto-sign.
+Nilai belum dianggap siap diteruskan ke Nilai Akhir sebelum tanda tangan lengkap atau terkena auto-sign.
 
-## 12.10 Snapshot Parameter
-
-Seluruh konfigurasi K-OPS disnapshot per karyawan/periode.
-
-Perubahan master di periode baru tidak mengubah histori periode lama.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 13. KPI-Karyawan
+# 13. KPI-KARYAWAN
 
 ## 13.1 Tujuan
 
-Digunakan untuk:
+KPI-Karyawan digunakan untuk:
 
-- memantau KPI bawahan;
+- melihat KPI bawahan;
 - melihat status pengisian;
 - melihat status tanda tangan;
-- memberikan approval;
-- melihat seluruh rantai bawahan;
-- membuka seluruh karyawan untuk Super Admin.
+- melakukan approval sesuai kewenangan;
+- memantau bawahan langsung dan tidak langsung;
+- memberikan akses administratif seluruh karyawan kepada Super Admin.
+
+**Status:** ⏳ **BELUM**
 
 ## 13.2 Hirarki
 
-Menggunakan:
+Dihitung dari:
 
 ```text
 karyawan.atasan_langsung_id
@@ -722,52 +851,98 @@ Contoh:
 
 ```text
 Naftalio
-↓
+    ↓
 Surwono
-↓
+    ↓
 Jon
 ```
 
 Untuk Naftalio:
 
-- Surwono = Bawahan Langsung
-- Jon = Bawahan Kedua
+```text
+Surwono = Bawahan Langsung
+Jon      = Bawahan Kedua
+```
+
+Untuk Surwono:
+
+```text
+Jon = Bawahan Langsung
+```
+
+**Fondasi Atasan Langsung:** ✅ **SUDAH**  
+**Traversal KPI:** ⏳ **BELUM**
 
 ## 13.3 Kategori
 
+Untuk pengguna yang mempunyai bawahan:
+
 ```text
-Bawahan Langsung
-Bawahan Kedua
-Bawahan Ketiga
-Bawahan Keempat
-dst.
+KPI-Karyawan
+├── Bawahan Langsung
+├── Bawahan Kedua
+├── Bawahan Ketiga
+├── Bawahan Keempat
+└── dst.
 ```
 
-### Super Admin
+### Khusus Super Admin
 
-Memiliki tambahan:
+Tambahan kategori:
 
 ```text
 Seluruh Karyawan
 ```
 
-Kategori ini tidak dibatasi hubungan bawahan pribadi.
+Tujuan:
 
-## 13.4 CTA
+- membuka KPI seluruh karyawan;
+- memudahkan HRD melakukan administrasi KPI;
+- tidak dibatasi hubungan bawahan pribadi Super Admin.
 
-Setiap baris:
+Semua Super Admin dapat membuka kategori tersebut.
+
+**Status:** ⏳ **BELUM**
+
+## 13.4 Kolom Daftar
+
+Minimal:
+
+- Nama
+- Jabatan
+- Departemen
+- Penempatan
+- Level bawahan
+- Status KPI
+- CTA
+
+## 13.5 CTA
+
+Setiap karyawan memiliki:
 
 ```text
 [ DR ] [ KI ] [ K-OPS ] [ M ] [ NA ]
 ```
 
-## 13.5 Monitoring vs Approval
+Keterangan:
 
-Monitoring dapat dilakukan terhadap seluruh bawahan.
+- `DR` = Daily Report
+- `KI` = Kinerja Individu
+- `K-OPS` = Kinerja OPS
+- `M` = Monthly
+- `NA` = Nilai Akhir
 
-Approval hanya sesuai kewenangan:
+**Status:** ⏳ **BELUM**
 
-| KPI | Approval |
+## 13.6 Monitoring vs Approval
+
+### Monitoring
+Atasan dapat melihat seluruh bawahan dalam rantai hirarki.
+
+### Approval
+Approval tetap mengikuti jenis KPI:
+
+| KPI | Pihak Approval |
 |---|---|
 | Daily | Atasan Langsung |
 | Kinerja Individu | Atasan Langsung |
@@ -775,25 +950,35 @@ Approval hanya sesuai kewenangan:
 | Monthly | HRD + Karyawan + Atasan Langsung + Atasan Kedua |
 | Nilai Akhir | Atasan Langsung |
 
+Atasan tingkat lebih jauh tetap dapat melihat tetapi tidak otomatis menjadi approver.
+
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 14. MPA — Monthly Performance Appraisal
+# 14. MPA — MONTHLY PERFORMANCE APPRAISAL
 
-## 14.1 Hubungan MPA dan Monthly
+## 14.1 Konsep
 
-MPA dan Monthly adalah **satu record yang sama**.
+MPA dan Monthly merupakan **satu kesatuan data**.
+
+Perbedaannya:
 
 ```text
 MPA
-= tempat memberi penilaian
+= workspace untuk memberi penilaian
 
 Monthly pada Individu
 = tampilan hasil penilaian milik karyawan
 ```
 
+Tidak dibuat record penilaian terpisah untuk masing-masing aktor.
+
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 15. Penetapan Penilai MPA
+# 15. PENETAPAN PENILAI MPA
 
 ## 15.1 Lokasi
 
@@ -803,70 +988,70 @@ Penetapan penilai dilakukan langsung pada:
 KPI → MPA
 ```
 
-Tidak ada halaman pengaturan penilai terpisah.
+melalui mini fitur di bagian atas halaman.
+
+Tidak perlu menu konfigurasi penilai yang terpisah.
+
+**Status:** ⏳ **BELUM**
 
 ## 15.2 Aturan
 
-1. Satu periode hanya memiliki satu penilai utama.
-2. Penilai menilai seluruh peserta KPI selain dirinya sendiri.
-3. Penilai dapat berubah tiap periode.
+1. Satu periode/bulan hanya mempunyai **1 penilai utama**.
+2. Penilai menilai seluruh karyawan yang menjadi objek MPA.
+3. Penilai dapat berganti setiap periode.
 4. Super Admin dapat menetapkan penilai.
 5. Penilai dapat disiapkan untuk beberapa periode ke depan.
-6. Deadline masing-masing periode tetap hari terakhir bulan performa pukul 23:59 WIB.
-7. Setelah tanggal 1, assignment periode tersebut locked.
-8. Penetapan lebih awal tidak membuka akses penilaian lebih awal.
-9. Akses penilai normal hanya tanggal 1–5 bulan berikutnya.
+6. Setiap periode tetap mempunyai deadline assignment masing-masing.
+7. Penilai untuk suatu periode harus sudah ditentukan maksimal pada hari terakhir bulan performa.
+8. Setelah masuk periode MPA tanggal 1, assignment periode tersebut dikunci.
+9. Penetapan lebih awal tidak membuat akses penilaian langsung aktif.
 
-## 15.3 Penilai Eligible
+**Status:** ⏳ **BELUM**
 
-Penilai normal harus:
-
-- karyawan aktif;
-- memiliki akun;
-- `users.is_active = true`;
-- termasuk peserta KPI;
-- bukan Dirut;
-- bukan Direktur.
-
-Dirut/Direktur bukan random evaluator reguler.
-
-## 15.4 Penilai Tidak Ditentukan
-
-Jika sampai deadline tidak ada penilai:
+## 15.3 Contoh
 
 ```text
-MPA = UNASSIGNED / BLOCKED
+Periode: Agustus 2026
+Penilai: Jon
+Deadline penetapan: 31 Agustus 2026
+
+1–5 September:
+Jon menilai performa Agustus
 ```
 
-Tidak boleh ada late assignment biasa.
+Tidak boleh terjadi:
 
-HRD mengambil alih penilaian.
-
-## 15.5 Penilai Nonaktif
-
-### Sebelum tanggal 1
-Super Admin boleh mengganti sampai deadline akhir bulan.
-
-### Setelah tanggal 1
-Tidak dilakukan reassignment.
-
-Histori assignment tetap.
-
-HRD melanjutkan record yang belum selesai.
+```text
+Penilai ditunjuk untuk Agustus
+tetapi record tersimpan sebagai September
+```
 
 ---
 
-# 16. Akses MPA Penilai
+# 16. AKSES MPA PENILAI
 
-Penilai melihat seluruh peserta KPI kecuali:
+## 16.1 Daftar Objek Penilaian
 
-- Dirut;
-- Direktur;
-- dirinya sendiri.
+Daftar berisi seluruh karyawan kecuali:
 
-Penilai boleh menilai karyawan pada level lebih tinggi.
+- Dirut
+- Direktur
+- penilai sendiri
 
-Kolom minimal:
+Penilai boleh menilai karyawan dengan level jabatan lebih tinggi.
+
+Contoh:
+
+```text
+Jon (Teknisi)
+→ dapat menilai Naftalio (Manajer)
+```
+
+**Status:** ⏳ **BELUM**
+
+## 16.2 Kolom MPA
+
+Minimal:
 
 - Nama
 - Jabatan
@@ -887,124 +1072,192 @@ Setelah selesai:
 Sudah Dinilai
 ```
 
+dan tombol dinonaktifkan.
+
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 17. Penilaian MPA
+# 17. PENILAIAN OLEH PENILAI MPA
+
+Penilai hanya melihat bagian yang menjadi tanggung jawabnya.
 
 ## 17.1 Kinerja Operasional
 
-Skala:
+Satu indikator:
+
+**Kinerja Operasional**
+
+Range:
 
 | Nilai | Kriteria |
 |---:|---|
 | 1–15 | Di bawah rata-rata |
-| 16–30 | Mencapai target/standar |
+| 16–30 | Mencapai target / standar |
 | 31–45 | Luar biasa |
 
 Penilai mengisi:
 
-- angka;
-- keterangan/bukti pendukung text.
+- Angka Penilaian
+- Keterangan/Bukti pendukung
 
 ## 17.2 Penilaian Umum
 
 Dimensi:
 
-1. Sikap Kerja
-2. Team Work
-3. Inisiatif
-4. Kepemimpinan/Potensi Kepemimpinan
+A. Sikap Kerja  
+B. Team Work  
+C. Inisiatif  
+D. Kepemimpinan / Potensi Kepemimpinan
 
-## 17.3 Level 1 / Tidak Memiliki Bawahan
+Setiap dimensi menggunakan:
+
+```text
+1–15
+16–30
+31–45
+```
+
+## 17.3 Level Karyawan
+
+### Tidak memiliki bawahan / Level 1
 
 Dinilai:
 
-- Kinerja Operasional
-- Sikap Kerja
-- Team Work
-- Inisiatif
+1. Kinerja Operasional
+2. Sikap Kerja
+3. Team Work
+4. Inisiatif
 
 Rumus:
 
 ```text
-((KO + Sikap + Team Work + Inisiatif) / 4) / 45 × 5
+(
+  (
+    Kinerja Operasional
+    + Sikap Kerja
+    + Team Work
+    + Inisiatif
+  ) / 4
+) / 45 × 5
 ```
 
-## 17.4 Level 2+ / Memiliki Bawahan
+### Memiliki bawahan / Level 2 ke atas
 
-Tambahan:
+Dinilai:
 
-- Kepemimpinan
+1. Kinerja Operasional
+2. Sikap Kerja
+3. Team Work
+4. Inisiatif
+5. Kepemimpinan
 
 Rumus:
 
 ```text
-((KO + Sikap + Team Work + Inisiatif + Kepemimpinan) / 5) / 45 × 5
+(
+  (
+    Kinerja Operasional
+    + Sikap Kerja
+    + Team Work
+    + Inisiatif
+    + Kepemimpinan
+  ) / 5
+) / 45 × 5
 ```
 
-Maksimum normal:
+Nilai normal maksimal Penilaian Umum:
 
 **5 poin**
 
-## 17.5 Performance dan Coaching
+**Status:** ⏳ **BELUM**
+
+## 17.4 Catatan Performance dan Coaching
 
 Penilai juga mengisi:
 
 - Penjelasan Berkaitan dengan Performance
 - Rencana Perbaikan / Coaching / Counseling
 
-Bukti MPA berbentuk **text only**.
+Bagian ini **bukan** diisi HRD dalam alur normal.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 18. Deadline MPA
+# 18. DEADLINE MPA
 
-Periode:
+Periode penilai:
 
-**Tanggal 1–5**
+**tanggal 1–5**
 
 Setelah deadline:
 
 - akses penilai ditutup;
 - tidak ada toleransi;
+- penilai tidak dapat membuka kembali input;
 - tidak ada reopen otomatis.
 
-Jika belum selesai:
+Jika terdapat kekurangan:
 
 ```text
-HRD takeover
+Penilai
+→ datang/berkoordinasi dengan HRD
+→ HRD melengkapi melalui akun HRD
 ```
 
-HRD melengkapi record yang sama dan aksi takeover wajib diaudit.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 19. MPA Milik Penilai
+# 19. MPA MILIK PENILAI
 
 Penilai tidak boleh menilai dirinya sendiri.
 
-Monthly milik penilai dinilai oleh:
+Namun penilai tetap merupakan objek KPI.
 
-**Direktur / HRD**
+Maka:
 
-Rule ini wajib.
+> Monthly/MPA milik karyawan yang sedang menjadi penilai **diisi/dinilai oleh Direktur/HRD**.
+
+Contoh:
+
+```text
+Jon = Penilai Agustus
+
+Jon tidak menilai Jon
+↓
+HRD menilai Jon
+```
+
+Ini merupakan rule wajib.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 20. Akses Super Admin di MPA
+# 20. AKSES SUPER ADMIN DI MPA
 
-Semua Super Admin:
+Semua Super Admin memiliki full access:
 
-- full access;
-- seluruh tombol tersedia.
+- Dirut
+- Direktur
+- Manajer
 
-Namun Direktur/HRD adalah pelaksana normal penilaian administratif dan takeover.
+Seluruh tombol aksi dapat tersedia.
+
+Namun:
+
+- Direktur/HRD adalah pihak yang berkewajiban menjalankan pengisian administratif;
+- Dirut/Manajer bukan pelaksana normal, walaupun capability UI tersedia.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 21. Monthly — Lanjutan oleh HRD
+# 21. LANJUTAN MONTHLY OLEH HRD
 
-Setelah MPA:
+Setelah penilai menyelesaikan MPA:
 
 ```text
 Penilai
@@ -1012,205 +1265,240 @@ Penilai
 → Performance
 → Coaching
 
+          ↓
+
 HRD
 → Absensi
 → Reward/Punishment
 ```
 
-Seluruh pihak melanjutkan **record yang sama**.
+HRD melanjutkan **record yang sama**.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 22. Penilaian Absensi Monthly
+# 22. PENILAIAN ABSENSI
 
-Diisi manual oleh HRD.
+Baseline:
+
+**Manual oleh Direktur/HRD.**
 
 | Kriteria | Kode | Potongan |
 |---|---|---:|
-| Urusan Pribadi | P1 | 0.5 |
-| Datang Lambat | DL | 0.3 |
-| Pulang Cepat | PC | 0.3 |
-| Lupa Catat | LC | 0.3 |
+| Urusan Pribadi | P1 | 0,5 |
+| Datang Lambat | DL | 0,3 |
+| Pulang Cepat | PC | 0,3 |
+| Lupa Catat | LC | 0,3 |
 | Mangkir | M | 3 |
 
 Rumus:
 
 ```text
-Total = Potongan × Jumlah Hari
+Total per Kriteria =
+Potongan × Jumlah Hari
 ```
 
 ```text
 Nilai Absensi =
-(10 - SUM Total Potongan) × 0.5
+(10 - SUM Total Potongan) × 0,5
 ```
 
-Tidak diterapkan clamp tambahan.
+Nilai normal maksimum:
+
+**5**
+
+Tidak diterapkan clamp minimum/maximum tambahan selama belum ada keputusan pimpinan.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 23. Reward & Punishment
+# 23. REWARD & PUNISHMENT
 
-Diisi HRD.
+Diisi HRD/Direktur.
 
-| Kriteria | Nilai |
+| Kriteria | Angka |
 |---|---:|
 | Major Award | +7 |
 | Minor Award | +3 |
 | Minor Demerit | -4 |
 | Major Demerit | -8 |
 
+Rumus:
+
 ```text
-Total Baris = Nilai × Jumlah
-Nilai R/P = SUM(Total Baris)
+Total Baris =
+Angka × Jumlah
 ```
 
-Reward/Punishment opsional.
+```text
+Nilai R/P =
+SUM seluruh Total Baris
+```
+
+Bagian ini opsional.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 24. Penyelesaian Monthly oleh HRD
+# 24. PENYELESAIAN MONTHLY OLEH HRD
 
-HRD tidak publish per karyawan.
+HRD tidak publish karyawan satu per satu.
 
 Workflow:
 
 ```text
-Penilai selesai MPA
-↓
-HRD melengkapi seluruh Monthly
-↓
-Absensi seluruh karyawan
-↓
-Reward/Punishment
-↓
-Seluruh record selesai
-↓
-Publish satu periode sekaligus
+Penilai selesai seluruh MPA
+        ↓
+HRD buka seluruh Monthly
+        ↓
+HRD isi Absensi seluruh karyawan
+        ↓
+HRD isi Reward/Punishment seluruh karyawan
+        ↓
+Pastikan satu periode selesai
+        ↓
+Klik Simpan / Selesaikan Monthly
+        ↓
+Seluruh Monthly dipublish sekaligus
 ```
 
-Tidak boleh publish sebagian.
+Baru setelah aksi tersebut:
 
-## 24.1 HRD Incomplete
+- Monthly muncul/update pada KPI Individu masing-masing;
+- status Monthly menjadi menunggu tanda tangan;
+- TTD HRD otomatis tercatat.
 
-Jika lewat tanggal 8 belum lengkap:
-
-```text
-status = HRD_INCOMPLETE
-```
-
-HRD dapat melakukan late administrative completion.
-
-Aksi tersebut wajib diaudit.
-
-## 24.2 Late Publish
-
-Jika publish setelah 9 pukul 23:59:
-
-```text
-Publish
-→ cek deadline
-→ catch-up auto-sign
-```
-
-Monthly yang belum publish tidak boleh auto-sign.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 25. Tanda Tangan Monthly
+# 25. TANDA TANGAN MONTHLY
 
-Wajib:
+Monthly membutuhkan:
 
-1. HRD
-2. Karyawan
+1. HRD / Direktur
+2. Atasan Kedua
 3. Atasan Langsung
-4. Atasan Kedua jika tersedia
+4. Karyawan
 
-TTD HRD otomatis saat publish.
+### HRD
+Tercatat otomatis ketika HRD menyelesaikan Monthly.
 
-Urutan TTD:
+### Atasan 1 dan Atasan 2
+Tidak diwajibkan berurutan pada baseline saat ini.
 
-**bebas**
+### Karyawan
+Menandatangani Monthly miliknya.
 
-Tidak wajib Atasan 1 → Atasan 2.
-
-Jika Atasan Kedua tidak tersedia:
-
-```text
-TTD Atasan Kedua = N/A
-```
-
-Tidak memblokir Monthly.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 26. Atasan Kedua
+# 26. DEFINISI ATASAN KEDUA
+
+Baseline:
 
 ```text
-Atasan Kedua =
+Atasan Kedua
+=
 Atasan Langsung dari Atasan Langsung
 ```
 
-Menggunakan snapshot periode.
+Contoh:
+
+```text
+Jon
+↓
+Surwono
+↓
+Naftalio
+
+Surwono = Atasan Langsung Jon
+Naftalio = Atasan Kedua Jon
+```
+
+⚠️ **OPEN DECISION:** perlakuan jika suatu karyawan tidak mempunyai Atasan Kedua yang valid.
 
 ---
 
-# 27. Auto-Sign
+# 27. INDIKATOR APPROVAL MONTHLY
+
+Contoh pada KPI-Karyawan:
+
+```text
+Jon
+[ DR ] [ KI ] [ K-OPS ] [ M ⚠️ ] [ NA ]
+```
+
+Untuk Jon:
+
+- Surwono melihat Jon pada Bawahan Langsung → indikator TTD Monthly.
+- Naftalio melihat Jon pada Bawahan Kedua → indikator TTD Monthly.
+
+Status detail dapat menunjukkan:
+
+```text
+HRD              ✅
+Karyawan         ⏳
+Atasan Langsung  ✅
+Atasan Kedua     ⏳
+```
+
+**Status:** ⏳ **BELUM**
+
+---
+
+# 28. AUTO-SIGN
 
 Deadline:
 
 **Tanggal 9 pukul 23:59 WIB**
 
-Berlaku untuk:
+Berlaku untuk tanda tangan yang masih pending pada:
 
 - Kinerja Individu
 - Kinerja OPS
-- Monthly yang sudah publish
+- Monthly
 
-Tidak berlaku:
+Tidak berlaku pada:
 
-- Daily
+- Daily Report
 - Nilai Akhir
 
-## 27.1 Manual Sign
-
-Manual sign dapat menggunakan:
-
-- foto tanda tangan;
-- nama;
-- waktu.
-
-Jika belum punya foto tanda tangan, pengguna harus melengkapinya sebelum manual sign.
-
-## 27.2 Auto-Sign
-
-Auto-sign tidak menggunakan foto tanda tangan pribadi.
-
-Metadata:
+Aksi:
 
 ```text
-status = auto_signed
-signed_for_user_id
-auto_signed_at
-reason = deadline
-source = automatic
+Pending Signature
+        ↓
+9 23:59
+        ↓
+Auto Signed
+        ↓
+Nilai dapat diteruskan
 ```
 
-UI/report menampilkan bahwa tanda tangan dilakukan otomatis oleh sistem.
+Sistem harus menyimpan bahwa tanda tangan berasal dari mekanisme otomatis.
 
-## 27.3 Catch-Up Auto-Sign
-
-Jika record baru publish setelah deadline:
-
-```text
-Publish terlambat
-→ Catch-Up Auto-Sign
-```
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 28. Nilai Akhir
+# 29. NILAI AKHIR
 
-## 28.1 Formula
+## 29.1 Komponen
+
+| Komponen | Bobot/Peran |
+|---|---:|
+| Kinerja Individu | 80% |
+| Kinerja OPS | 10% normal |
+| Penilaian Umum | 5% normal |
+| Disiplin/Absensi | 5% normal |
+| Reward/Punishment | Tambah/kurang |
+
+Rumus:
 
 ```text
 Nilai Akhir =
@@ -1221,217 +1509,201 @@ Kinerja Individu
 + Reward/Punishment
 ```
 
-## 28.2 Bobot Normal
+**Status:** ⏳ **BELUM**
 
-| Komponen | Nilai Normal |
-|---|---:|
-| Kinerja Individu | 80 |
-| Kinerja OPS | 10 |
-| Penilaian Umum | 5 |
-| Absensi | 5 |
-| Reward/Punishment | Tambahan/Pengurangan |
+## 29.2 Nilai Dapat Melebihi 100
 
-## 28.3 Nilai >100
+Sistem **tidak melakukan clamp maksimum 100**.
 
-Tidak dilakukan clamp.
-
-Contoh:
+Jika capaian atau Reward membuat nilai:
 
 ```text
-Nilai Akhir = 107.00
+107
 ```
 
-tetap disimpan 107.
+maka nilai tetap:
 
-Kelebihan dapat berhubungan dengan insentif tambahan.
+```text
+107
+```
 
-## 28.4 Kategori
+Kelebihan nilai dapat berkaitan dengan insentif tambahan di luar komponen KPI normal.
+
+## 29.3 Kategori
 
 | Nilai | Kategori |
 |---:|---|
-| >= 90 | Sangat Baik |
-| 80–<90 | Baik |
-| 70–<80 | Cukup |
-| 60–<70 | Kurang |
-| <60 | Sangat Kurang |
+| `>= 90` | Sangat Baik |
+| `80 – <90` | Baik |
+| `70 – <80` | Cukup |
+| `60 – <70` | Kurang |
+| `<60` | Sangat Kurang |
+
+Dengan demikian nilai >100 tetap masuk kategori **Sangat Baik**.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 29. Tanda Tangan Nilai Akhir
+# 30. TANDA TANGAN NILAI AKHIR
 
 Wajib:
 
 - Atasan Langsung.
 
-Waktu normal:
+Waktu:
 
 **Tanggal 10**
 
-Jika prerequisite terlambat:
+Flow:
 
 ```text
-Prerequisite selesai
-→ Nilai Akhir dihitung
-→ Status Late Finalization
-→ CTA TTD Atasan tersedia saat itu
+Semua komponen siap
+↓
+Nilai Akhir terbentuk
+↓
+Tanggal 10
+↓
+Atasan Langsung TTD
+↓
+Final
 ```
 
+**Status:** ⏳ **BELUM**
+
 ---
 
-# 30. Matriks Tanda Tangan
+# 31. MATRIKS TANDA TANGAN
 
-| KPI | Karyawan | Atasan Langsung | Atasan Kedua | HRD |
+| Jenis KPI | Karyawan | Atasan Langsung | Atasan Kedua | HRD |
 |---|:---:|:---:|:---:|:---:|
-| Daily Report | - | ✓ | - | - |
-| Kinerja Individu | - | ✓ | - | - |
-| Kinerja OPS | ✓ | ✓ | - | - |
-| Monthly | ✓ | ✓ | ✓ / N/A | ✓ |
-| Nilai Akhir | - | ✓ | - | - |
+| Daily Report | - | ✅ | - | - |
+| Kinerja Individu | - | ✅ | - | - |
+| Kinerja OPS | ✅ | ✅ | - | - |
+| Monthly | ✅ | ✅ | ✅ | ✅ |
+| Nilai Akhir | - | ✅ | - | - |
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 31. CRUD Administratif KPI
+# 32. CRUD ADMINISTRATIF KPI
 
-Semua Super Admin memiliki full CRUD capability.
+Semua Super Admin memiliki tombol CRUD.
 
 Pelaksana normal:
 
 **Direktur/HRD**
 
-CRUD dapat mengelola:
+CRUD digunakan untuk parameter seperti:
 
 - KPI Item
 - Maintenance
 - Target Unit
 - Tanda
 - Frekuensi
-- target
-- indikator
-- kriteria
-- parameter pendukung KPI
-
-Parameter yang memengaruhi histori harus disnapshot/version per periode.
-
----
-
-# 32. Shared Record
-
-Semua bagian KPI berbagi record periode yang sama.
-
-Contoh Monthly:
-
-```text
-Jon + Agustus 2026
-│
-├── Penilai isi Penilaian Umum
-├── Penilai isi Performance
-├── Penilai isi Coaching
-├── HRD isi Absensi
-├── HRD isi Reward/Punishment
-├── HRD Publish
-├── Jon TTD
-├── Atasan 1 TTD
-└── Atasan 2 TTD / N/A
-```
-
-Bukan membuat record baru untuk setiap aktor.
-
----
-
-# 33. Snapshot dan Historisasi Parameter
-
-Parameter yang digunakan suatu periode tidak boleh berubah mengikuti master terbaru.
+- Kriteria
+- Indikator
+- kontribusi perusahaan
+- target/capaian
+- parameter KPI lainnya
 
 Prinsip:
 
 ```text
-MASTER
-↓
-Generate Periode
-↓
-SNAPSHOT
-↓
-Scoring + Histori
+Full Capability = semua Super Admin
+Operational Responsibility = Direktur / HRD
 ```
 
-Berlaku untuk:
-
-- struktur organisasi;
-- Kinerja Individu;
-- KPI Item;
-- Maintenance;
-- Target;
-- Bobot;
-- Kriteria MPA;
-- parameter lain yang memengaruhi nilai.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 34. Koreksi Administratif
+# 33. SHARED RECORD
 
-KPI historis yang sudah final boleh dikoreksi oleh Super Admin hanya melalui:
+Semua proses harus berbagi record yang terhubung.
 
-**Koreksi Administratif**
+Contoh Monthly:
 
-Bukan edit biasa.
+```text
+Periode Agustus 2026
+Karyawan Jon
+        │
+        ├── Penilai mengisi Penilaian Umum
+        │
+        ├── Penilai mengisi Performance
+        │
+        ├── Penilai mengisi Coaching
+        │
+        ├── HRD mengisi Absensi
+        │
+        ├── HRD mengisi Reward/Punishment
+        │
+        ├── HRD Publish
+        │
+        ├── Jon TTD
+        │
+        ├── Surwono TTD
+        │
+        └── Naftalio TTD
+```
 
-Wajib mencatat:
+Bukan:
 
-- alasan koreksi;
-- pengguna yang melakukan;
-- timestamp;
-- data/nilai sebelum;
-- data/nilai sesudah;
-- revision history;
-- recalculation nilai terdampak.
+```text
+Record Penilai
+Record HRD
+Record Atasan
+Record Karyawan
+```
 
-Record lama tidak dihapus.
+yang terpisah.
+
+Kunci utama konseptual:
+
+```text
+karyawan_id
+periode_bulan
+periode_tahun
+```
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 35. Status Record
+# 34. STATUS RECORD
 
-Status yang dapat digunakan:
+Status yang disarankan:
 
 ```text
 draft
 submitted
 waiting_approval
 approved
-not_filled
 auto_submitted
 auto_signed
+not_filled
 locked
 completed
-late_completion
-late_finalization
 ```
 
-Status MPA:
+Untuk MPA dapat ditambah:
 
 ```text
 unassigned
-blocked
 scheduled
 open
 completed
 closed
-hrd_takeover
 ```
 
-Status Monthly:
+Nama final dapat menyesuaikan implementasi, tetapi makna status tidak boleh hilang.
 
-```text
-HRD_INCOMPLETE
-published
-late_publish
-```
-
-Nama teknis final boleh menyesuaikan implementasi selama makna bisnis tetap sama.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 36. Indikator UI
+# 35. INDIKATOR UI KPI-KARYAWAN
 
 Contoh:
 
@@ -1441,306 +1713,332 @@ Jon — Teknisi
 [ DR 🟡 ] [ KI 🟢 ] [ K-OPS ⚠️ ] [ M 🟡 ] [ NA ⚪ ]
 ```
 
-Sistem harus dapat menandai:
+Detail:
 
-- belum diisi;
-- sedang diproses;
-- menunggu TTD;
-- selesai;
-- tidak mengisi;
-- locked;
-- perlu tindakan;
-- auto-submitted;
-- auto-signed;
-- late completion;
-- late finalization.
+### DR 🟡
+Ada Daily menunggu TTD.
 
----
+### KI 🟢
+Sudah selesai.
 
-# 37. Notifikasi MVP
+### K-OPS ⚠️
+Ada tanda tangan belum lengkap.
 
-Scope awal:
+### M 🟡
+Monthly sudah publish tetapi belum semua TTD.
 
-- badge;
-- indicator;
-- status di dalam aplikasi.
+### NA ⚪
+Nilai Akhir belum tersedia.
 
-Web Push / notifikasi HP tidak termasuk scope awal.
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 38. Hard Deadline
+# 36. NOTIFIKASI / PENANDA TINDAKAN
 
-Deadline harus dieksekusi oleh sistem.
+Sistem perlu memberikan indikator ketika:
 
-Sistem harus:
+- Daily bawahan perlu ditandatangani;
+- Kinerja Individu bawahan perlu ditandatangani;
+- Kinerja OPS perlu ditandatangani;
+- Monthly bawahan langsung perlu TTD;
+- Monthly bawahan kedua perlu TTD;
+- MPA masih memiliki karyawan belum dinilai;
+- deadline mendekat;
+- record auto-submitted;
+- record auto-signed;
+- HRD perlu menyelesaikan Monthly;
+- Nilai Akhir siap ditandatangani.
+
+**Status:** ⏳ **BELUM**
+
+---
+
+# 37. RULE DEADLINE
+
+Deadline bersifat **hard deadline**.
+
+Artinya sistem harus:
 
 - menutup input;
 - mengganti status;
 - menjalankan auto-submit;
 - menjalankan auto-sign;
-- menjalankan catch-up auto-sign;
-- mencegah edit setelah locked;
-- mencatat late administrative completion.
+- mencegah edit setelah lock.
+
+Deadline tidak hanya berupa teks pemberitahuan.
+
+**Status:** ⏳ **BELUM**
 
 ---
 
-# 39. Acceptance Criteria
+# 38. ACCEPTANCE CRITERIA — MENU & ACCESS
 
-## 39.1 Menu dan Akses
-- Dirut tidak melihat Individu.
-- Direktur tidak melihat Individu.
-- Manajer tetap melihat dan mengisi Individu.
-- Semua Super Admin memiliki full access.
-- Semua Super Admin melihat tombol aksi administratif.
-- KPI-Karyawan Super Admin mempunyai kategori Seluruh Karyawan.
-- Admin/User tanpa bawahan tidak melihat KPI-Karyawan.
-
-## 39.2 Daily
-- Hanya hari ini dan kemarin.
-- Bukti foto tersedia.
-- Hanya hari kerja aktual yang diwajibkan.
-- Izin/Sakit/Off/Libur/Alfa tidak memicu pelanggaran Daily.
-- Simpan tidak lock.
-- TTD Atasan Langsung lock.
-- Bulk `Tanda Tangani Semua` tersedia.
-- Counter 3× dihitung per bulan.
-- 3× memunculkan indikator SP1.
-- SP1 tidak dibuat otomatis.
-
-## 39.3 Kinerja Individu
-- Aktif tanggal 1–2.
-- Evaluasi diri 1–100.
-- Struktur utama 70% + 5% + 5% fixed.
-- Auto-submit setelah deadline.
-- Kosong menghasilkan NULL + status not_filled + score 0.
-- TTD Atasan Langsung wajib.
-
-## 39.4 Kinerja OPS
-- Konfigurasi per karyawan/periode.
-- HRD mengelola KPI Item, Maintenance, Target Unit, Tanda, Frekuensi.
-- Sumber Data dari snapshot Jabatan.
-- Bulan dari periode.
-- Target Bulanan = Target Unit.
-- Target aktif >0.
-- Beban Target dihitung otomatis total normal 10 percentage points.
-- Karyawan hanya mengisi Hasil + aktivitas teks + foto.
-- Nilai boleh melampaui 10.
-- TTD karyawan + Atasan Langsung wajib.
-- Fungsi `Tanda (+/-)` belum memengaruhi scoring sampai rule bisnis diberikan.
-
-## 39.5 KPI-Karyawan
-- Hirarki dinamis.
-- Bawahan Langsung, Kedua, Ketiga, dst.
-- CTA DR/KI/K-OPS/M/NA.
-- Super Admin melihat Seluruh Karyawan.
-- Monitoring tidak sama dengan approval.
-
-## 39.6 MPA
-- Penilai ditetapkan di halaman MPA.
-- Satu penilai per periode.
-- Bisa disiapkan beberapa periode ke depan.
-- Deadline assignment akhir bulan.
-- Penilai eligible harus aktif dan memiliki akun aktif.
-- Jika tidak ada penilai → blocked → HRD takeover.
-- Penilai hanya aktif tanggal 1–5.
-- Penilai tidak menilai diri sendiri/Dirut/Direktur.
-- Penilai boleh menilai level lebih tinggi.
-- Bukti MPA text only.
-- Penilai isi Performance + Coaching.
-- Deadline lewat → akses normal ditutup.
-- HRD menilai si penilai.
-- HRD melengkapi penilaian yang tertinggal.
-
-## 39.7 Monthly
-- HRD isi Absensi manual.
-- HRD isi Reward/Punishment.
-- Tidak boleh publish sebagian.
-- Publish satu periode sekaligus.
-- TTD HRD otomatis.
-- TTD karyawan + Atasan 1 + Atasan 2 bila tersedia.
-- Urutan TTD bebas.
-- Atasan 2 tidak tersedia → N/A.
-- Late publish memicu catch-up auto-sign.
-
-## 39.8 Finalisasi
-- Auto-sign tanggal 9 pukul 23:59.
-- Auto-sign tidak menggunakan foto tanda tangan pribadi.
-- Nilai Akhir normal ditandatangani tanggal 10.
-- Late Finalization diperbolehkan setelah prerequisite lengkap.
-- Nilai >100 tetap disimpan.
-- Nilai final 2 desimal.
-- Koreksi KPI final hanya melalui Koreksi Administratif.
+- [ ] Dirut tidak memiliki menu Individu.
+- [ ] Direktur tidak memiliki menu Individu.
+- [ ] Manajer memiliki menu Individu.
+- [ ] Manajer tetap wajib KPI pribadi.
+- [ ] Pengguna tanpa bawahan tidak melihat KPI-Karyawan.
+- [ ] Pengguna dengan bawahan melihat KPI-Karyawan.
+- [ ] Semua Super Admin dapat membuka seluruh KPI.
+- [ ] Semua Super Admin melihat tombol aksi administratif.
+- [ ] Direktur/HRD dicatat sebagai pelaksana normal administrasi.
+- [ ] Super Admin mempunyai kategori Seluruh Karyawan.
 
 ---
 
-# 40. Status Implementasi
+# 39. ACCEPTANCE CRITERIA — DAILY
+
+- [ ] Daily hanya dapat diisi hari ini dan kemarin.
+- [ ] Daily memiliki upload Bukti.
+- [ ] Simpan tidak langsung lock.
+- [ ] Approval Atasan Langsung menyebabkan lock.
+- [ ] Indikator pending muncul pada KPI-Karyawan.
+- [ ] Tanda Tangani Semua tersedia untuk bawahan langsung.
+- [ ] Bulk sign tidak mengubah Daily yang sudah approved.
+- [ ] Tidak mengisi diberi indikator.
+- [ ] Tiga kali tidak mengisi dapat ditindaklanjuti SP1 setelah rule final dikunci.
+
+---
+
+# 40. ACCEPTANCE CRITERIA — KINERJA INDIVIDU
+
+- [ ] Hanya aktif tanggal 1–2.
+- [ ] Evaluasi diri 1–100.
+- [ ] Formula bobot menghasilkan maksimum normal 80.
+- [ ] Lewat deadline auto-submit.
+- [ ] Record kosong ditandai Tidak Mengisi.
+- [ ] TTD Atasan Langsung wajib.
+- [ ] Setelah approval record locked.
+
+---
+
+# 41. ACCEPTANCE CRITERIA — KINERJA OPS
+
+- [ ] HRD dapat mengelola KPI Item.
+- [ ] HRD dapat mengelola Maintenance.
+- [ ] HRD dapat mengelola Target Unit.
+- [ ] HRD dapat mengelola Tanda.
+- [ ] HRD dapat mengelola Frekuensi.
+- [ ] Beban Target dihitung otomatis.
+- [ ] Total Beban Target = 10% pada target normal.
+- [ ] Sumber Data otomatis dari Jabatan.
+- [ ] Bulan otomatis dari Periode.
+- [ ] Karyawan hanya mengisi Hasil.
+- [ ] Karyawan mengisi Aktivitas Pencapaian teks.
+- [ ] Karyawan upload foto pencapaian.
+- [ ] Lewat tanggal 2 auto-submit.
+- [ ] TTD Karyawan wajib.
+- [ ] TTD Atasan Langsung wajib.
+- [ ] Nilai di atas target tidak dipotong hanya karena melebihi bobot normal.
+
+---
+
+# 42. ACCEPTANCE CRITERIA — KPI-KARYAWAN
+
+- [ ] Hirarki dibangun dari Atasan Langsung.
+- [ ] Bawahan Langsung tampil.
+- [ ] Bawahan Kedua tampil.
+- [ ] Tingkat selanjutnya tampil dinamis.
+- [ ] Ada CTA DR/KI/K-OPS/M/NA.
+- [ ] Super Admin dapat melihat Seluruh Karyawan.
+- [ ] Monitoring bawahan tidak sama dengan hak approval.
+- [ ] Indikator tindakan muncul sesuai kewenangan.
+
+---
+
+# 43. ACCEPTANCE CRITERIA — MPA
+
+- [ ] Penilai ditetapkan pada halaman MPA.
+- [ ] Satu periode hanya satu penilai utama.
+- [ ] Penilai dapat disiapkan untuk beberapa periode.
+- [ ] Assignment periode dikunci saat periode MPA dimulai.
+- [ ] MPA hanya editable penilai tanggal 1–5.
+- [ ] Penilai melihat semua objek kecuali Dirut/Direktur/diri sendiri.
+- [ ] Penilai boleh menilai level jabatan lebih tinggi.
+- [ ] Tombol Beri Nilai mati setelah selesai.
+- [ ] Penilai mengisi Performance.
+- [ ] Penilai mengisi Coaching.
+- [ ] Deadline lewat menutup akses.
+- [ ] Tidak ada toleransi.
+- [ ] HRD dapat melengkapi kekurangan.
+- [ ] HRD menilai si penilai.
+
+---
+
+# 44. ACCEPTANCE CRITERIA — MONTHLY HRD
+
+- [ ] HRD melihat hasil MPA penilai.
+- [ ] HRD mengisi Absensi manual.
+- [ ] HRD mengisi Reward/Punishment.
+- [ ] HRD tidak wajib mengisi Performance/Coaching karena bagian tersebut milik penilai.
+- [ ] HRD melengkapi seluruh karyawan sebelum publish.
+- [ ] Publish dilakukan sekaligus per periode.
+- [ ] TTD HRD otomatis saat publish.
+- [ ] Monthly masuk KPI Individu masing-masing setelah publish.
+- [ ] Monthly menunggu TTD karyawan, Atasan 1, dan Atasan 2.
+
+---
+
+# 45. ACCEPTANCE CRITERIA — DEADLINE & FINAL
+
+- [ ] KI auto-submit setelah tanggal 2.
+- [ ] K-OPS auto-submit setelah tanggal 2.
+- [ ] MPA ditutup setelah tanggal 5.
+- [ ] HRD phase tanggal 6–8.
+- [ ] TTD selesai maksimal tanggal 9.
+- [ ] Auto-sign berjalan tanggal 9 23:59 WIB.
+- [ ] Daily tidak terkena auto-sign bulanan.
+- [ ] Nilai Akhir tersedia setelah komponen memenuhi rule.
+- [ ] Nilai Akhir ditandatangani Atasan Langsung tanggal 10.
+- [ ] Nilai >100 tetap disimpan.
+- [ ] Kategori `>=90` tetap Sangat Baik.
+
+---
+
+# 46. STATUS IMPLEMENTASI TERKINI
 
 | Area | Status |
 |---|---|
-| Fondasi Karyawan | Sudah |
-| Jabatan/Departemen/Penempatan | Sudah |
-| Atasan Langsung | Sudah |
-| Foto Tanda Tangan | Sudah |
-| Role Mapping | Sudah |
-| Menu KPI | Belum |
-| Daily | Belum |
-| Kinerja Individu | Belum |
-| Kinerja OPS | Belum |
-| KPI-Karyawan | Belum |
-| MPA | Belum |
-| Monthly | Belum |
-| Approval/TTD | Belum |
-| Auto Submit | Belum |
-| Auto Sign | Belum |
-| Nilai Akhir | Belum |
-| Scheduler | Belum |
-| CRUD Parameter KPI | Belum |
-| Koreksi Administratif | Belum |
+| Data Karyawan | ✅ SUDAH |
+| Jabatan | ✅ SUDAH |
+| Departemen | ✅ SUDAH |
+| Penempatan | ✅ SUDAH |
+| Atasan Langsung | ✅ SUDAH |
+| Foto Tanda Tangan | ✅ SUDAH |
+| Role Mapping | ✅ SUDAH |
+| Relasi dasar Atasan/Bawahan | ✅ SUDAH |
+| Menu KPI | ⏳ BELUM |
+| Individu | ⏳ BELUM |
+| Daily Report | ⏳ BELUM |
+| Kinerja Individu | ⏳ BELUM |
+| Kinerja OPS | ⏳ BELUM |
+| KPI-Karyawan | ⏳ BELUM |
+| MPA | ⏳ BELUM |
+| Penetapan Penilai | ⏳ BELUM |
+| Monthly | ⏳ BELUM |
+| Absensi Monthly | ⏳ BELUM |
+| Reward/Punishment | ⏳ BELUM |
+| Approval KPI | ⏳ BELUM |
+| Bulk Sign Daily | ⏳ BELUM |
+| Auto Submit | ⏳ BELUM |
+| Auto Sign | ⏳ BELUM |
+| Nilai Akhir | ⏳ BELUM |
+| CRUD Parameter KPI | ⏳ BELUM |
+| Indikator Status | ⏳ BELUM |
+| Scheduler KPI | ⏳ BELUM |
 
 ---
 
-# 41. Outstanding Business Rule
+# 47. OPEN DECISIONS
 
-Satu business rule yang belum boleh diasumsikan implementor:
+Hal berikut **belum boleh diputuskan agent secara mandiri**:
 
-## Fungsi Matematis `Tanda (+/-)` pada Kinerja OPS
-
-- field tetap disimpan;
-- HRD tetap dapat mengisi;
-- belum memengaruhi formula K-OPS;
-- engine scoring tidak boleh menggunakan `Tanda (+/-)` sampai rule bisnis final diberikan perusahaan.
-
----
-
-# 42. Deferred Scope
-
-Fitur berikut ditunda:
-
-1. Export KPI
-2. Cetak/PDF KPI
-3. Web Push / notifikasi HP
-
-Deferred scope tidak menghalangi implementasi workflow utama.
+1. Tiga kali Tidak Mengisi Daily:
+   - per bulan; atau
+   - akumulatif.
+2. Fungsi matematis `Tanda (+/-)` pada Kinerja OPS.
+3. Perlakuan nilai numerik Kinerja Individu/Kinerja OPS yang auto-submit dalam keadaan kosong.
+4. Perlakuan tanda tangan Monthly jika Atasan Kedua tidak tersedia.
+5. Apakah urutan TTD Monthly nantinya akan diwajibkan Atasan 1 → Atasan 2 atau tetap bebas.
+6. Format export KPI.
+7. Format cetak KPI.
+8. Historisasi parameter KPI ketika master/indikator berubah setelah periode lama selesai.
+9. Detail mekanisme SP1 setelah tiga kali Daily tidak diisi.
 
 ---
 
-# 43. Prinsip Implementasi Wajib
+# 48. PRINSIP IMPLEMENTASI WAJIB
 
-1. **Period-First**  
-   Seluruh KPI bulanan menggunakan bulan performa.
+## 48.1 Period-First
+Setiap record bulanan harus mengetahui periode performanya.
 
-2. **Shared Record**  
-   Aktor berbeda melanjutkan record yang sama.
+## 48.2 Shared Record
+Aktor berbeda melanjutkan record yang sama.
 
-3. **Hierarchy-Aware**  
-   Monitoring dan approval mengikuti snapshot struktur organisasi.
+## 48.3 Hierarchy-Aware
+Monitoring dan approval menggunakan struktur Atasan Langsung.
 
-4. **Full Super Admin Capability**  
-   Seluruh Super Admin memiliki full capability.
+## 48.4 Full Super Admin Capability
+Semua Super Admin tetap mempunyai full capability dan tombol aksi.
 
-5. **HRD Operational Ownership**  
-   Direktur/HRD adalah pelaksana operasional normal administrasi KPI.
+## 48.5 HRD Operational Ownership
+Direktur/HRD merupakan pelaksana normal pengelolaan administratif KPI.
 
-6. **Role ≠ KPI Obligation**  
-   Manajer tetap wajib KPI; Dirut/Direktur tidak.
+## 48.6 Role ≠ KPI Obligation
+Manajer tetap mengisi KPI walaupun Super Admin.  
+Dirut dan Direktur tidak mengisi KPI Individu.
 
-7. **Hard Deadline**  
-   Deadline harus dijalankan sistem.
+## 48.7 Hard Deadline
+Deadline harus dieksekusi oleh sistem.
 
-8. **Traceable Signature**  
-   Manual sign dan auto-sign dibedakan secara eksplisit.
+## 48.8 Traceable Signature
+Setiap tanda tangan harus menyimpan identitas, waktu, dan sumber tindakan manual/otomatis.
 
-9. **Historical Snapshot**  
-   Struktur dan parameter KPI di-snapshot per periode.
+## 48.9 Visible Status
+Status dan tindakan yang belum selesai harus mudah terlihat.
 
-10. **No Partial Monthly Publish**  
-    Monthly dipublish satu periode sekaligus.
-
-11. **Precision Consistency**  
-    Intermediate ≥4 desimal; final 2 desimal.
-
-12. **Administrative Correction Only**  
-    KPI final hanya dikoreksi melalui mekanisme audit.
-
-13. **No Silent Assumptions**  
-    Implementor tidak boleh mengisi rule yang belum ditetapkan.
+## 48.10 No Silent Assumptions
+Rule yang masih OPEN tidak boleh diisi sendiri oleh programmer/agent.
 
 ---
 
-# 44. Alur End-to-End
+# 49. RINGKASAN ALUR END-TO-END
 
 ```text
 SELAMA BULAN BERJALAN
-Karyawan bekerja/hadir
-→ Isi Daily
-→ Atasan Langsung TTD
-
-3× Tidak Mengisi dalam periode
-→ Perlu Tindak Lanjut SP1
-→ HRD menentukan tindak lanjut
+Karyawan isi Daily Report
+        ↓
+Atasan Langsung approve Daily
 
 AKHIR BULAN
-Bentuk peserta KPI
-→ Snapshot struktur
-→ Snapshot parameter
-→ Tetapkan penilai
-
-Jika tidak ada penilai
-→ MPA BLOCKED
-→ HRD takeover
+Super Admin pastikan penilai periode sudah ditetapkan
+        ↓
 
 TANGGAL 1–2
 Karyawan isi Kinerja Individu
-Karyawan isi Kinerja OPS
-
-Jika kosong saat deadline
-→ auto-submitted
-→ NULL + not_filled
-→ score 0
+Karyawan isi Hasil + Bukti Kinerja OPS
+        ↓
 
 TANGGAL 1–5
-Penilai isi MPA seluruh peserta
-kecuali diri sendiri/Dirut/Direktur
-→ HRD menilai si penilai
-→ HRD takeover bila diperlukan
+Penilai melakukan MPA seluruh karyawan
+kecuali Dirut/Direktur/diri sendiri
+        ↓
+HRD menilai si penilai
+        ↓
 
 TANGGAL 6–8
-HRD isi Absensi + Reward/Punishment
-→ seluruh Monthly harus selesai
-→ publish satu periode
-→ TTD HRD otomatis
-
-Jika belum selesai tanggal 8
-→ HRD_INCOMPLETE
-→ late administrative completion
+HRD melanjutkan record Monthly
+→ Absensi
+→ Reward/Punishment
+        ↓
+HRD menyelesaikan seluruh karyawan
+        ↓
+Publish Monthly satu periode sekaligus
+        ↓
+TTD HRD otomatis
+        ↓
 
 SAMPAI TANGGAL 9
-TTD KI
-TTD K-OPS
+TTD Kinerja Individu
+TTD Kinerja OPS
 TTD Monthly
+        ↓
 
-9 PUKUL 23:59
-→ Auto-Sign yang masih pending
-
-Jika publish terlambat
-→ Catch-Up Auto-Sign
+9 PUKUL 23:59 WIB
+Auto-sign sisa KI/K-OPS/Monthly
+        ↓
 
 SISTEM HITUNG NILAI AKHIR
+        ↓
 
 TANGGAL 10
 Atasan Langsung TTD Nilai Akhir
+        ↓
 
-Jika prerequisite terlambat
-→ Late Finalization
-
-KPI FINAL
-
-Jika perlu perubahan histori
-→ Koreksi Administratif
-→ Audit + Revision + Recalculation
+KPI PERIODE SELESAI
 ```
 
 ---
 
-**END OF PRD**
+**END OF PRD — WORKING BASELINE UPDATED**

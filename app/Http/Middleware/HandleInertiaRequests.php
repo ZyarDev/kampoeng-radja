@@ -43,7 +43,7 @@ class HandleInertiaRequests extends Middleware
         $activePeriod = \App\Models\KpiPeriod::latest('id')->first();
         $roleName = $user?->role()->value('nama_role');
         $isHrdOrAdmin = in_array($roleName, ['admin', 'super_admin'], true) ||
-            in_array(mb_strtolower($user?->karyawan?->jabatan?->nama_jabatan ?? ''), ['hrd', 'direktur', 'dirut'], true);
+            in_array(mb_strtolower(trim($user?->karyawan?->jabatan?->nama_jabatan ?? '')), ['hrd', 'direktur', 'dirut', 'direktur utama'], true);
 
         $isSupervisor = false;
         if ($user?->karyawan_id && $activePeriod) {
