@@ -99,7 +99,7 @@ const bulkApprove = async (group) => {
         ><div
             class="min-h-[calc(100vh-64px)] bg-[#f5f8fd] px-4 py-5 sm:px-6 lg:px-7"
         >
-            <div class="mx-auto max-w-[1200px] space-y-5">
+            <div class="w-full space-y-5">
                 <header
                     class="flex flex-col gap-4 rounded-2xl border border-[#dce5f1] bg-white p-6 shadow-sm sm:flex-row sm:items-start sm:justify-between"
                 >
@@ -261,16 +261,26 @@ const bulkApprove = async (group) => {
                                                 "
                                                 class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
                                                 >DR</Link
-                                            ><span
-                                                v-for="label in [
-                                                    'KI',
-                                                    'K-OPS',
-                                                    'M',
-                                                    'NA',
-                                                ]"
-                                                :key="label"
-                                                class="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-400"
-                                                >{{ label }}</span
+                                            ><Link
+                                                :href="route('dashboard.kpi.individual', { period: period.id, karyawan_id: p.karyawan_id })"
+                                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
+                                                title="Buka Kinerja Individu karyawan"
+                                                >KI</Link
+                                            ><Link
+                                                :href="route('dashboard.kpi.ops', { period: period.id, karyawan_id: p.karyawan_id })"
+                                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
+                                                title="Buka Kinerja OPS karyawan"
+                                                >K-OPS</Link
+                                            ><Link
+                                                :href="route('dashboard.kpi.monthly', { period: period.id, karyawan_id: p.karyawan_id })"
+                                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
+                                                title="Buka Monthly karyawan"
+                                                >M</Link
+                                            ><Link
+                                                :href="route('dashboard.kpi.final', { period: period.id, karyawan_id: p.karyawan_id })"
+                                                class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700"
+                                                title="Buka Nilai Akhir karyawan"
+                                                >NA</Link
                                             >
                                         </div>
                                     </td>

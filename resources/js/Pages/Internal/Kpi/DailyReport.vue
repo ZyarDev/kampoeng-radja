@@ -2,6 +2,7 @@
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import InternalDashboardLayout from '@/Layouts/InternalDashboardLayout.vue';
+import KpiEmployeeNavigation from '@/Components/Internal/KpiEmployeeNavigation.vue';
 import { useConfirmation } from '@/composables/useConfirmation';
 
 const props = defineProps({
@@ -107,6 +108,7 @@ const bulkApprove = async () => {
                     <div><h1 class="text-[28px] font-bold leading-tight text-[#0b3475]">Daily Report</h1><p class="mt-1 text-sm text-[#55709f]">Catat dan laporkan aktivitas kerja harian Anda</p></div>
                     <div class="text-left sm:text-right"><span :class="statusClass" class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"><span class="h-2 w-2 rounded-full bg-current"></span>{{ statusLabel }}</span><p class="mt-2 text-xs text-[#6079a4]">{{ formattedTargetDate }}</p></div>
                 </header>
+                <KpiEmployeeNavigation v-if="!isOwner && activePeriodId" class="mt-5" :period-id="activePeriodId" :employee-id="employeeHeader.id" active="daily" />
                 <div class="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr] xl:items-stretch">
                 <section class="h-full rounded-xl border border-[#dce5f1] p-4">
                     <div class="flex items-center justify-between"><h2 class="text-lg font-bold text-[#102f66]">● Informasi Karyawan</h2><Link :href="route('dashboard.kpi.index')" class="rounded-lg border border-[#d8e2ef] bg-[#f7f9fc] px-4 py-2 text-xs font-semibold text-[#17386f]">← Kembali</Link></div>

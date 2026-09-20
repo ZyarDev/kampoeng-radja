@@ -2,12 +2,15 @@
 import { ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import InternalDashboardLayout from '@/Layouts/InternalDashboardLayout.vue';
+import KpiEmployeeNavigation from '@/Components/Internal/KpiEmployeeNavigation.vue';
 import { useConfirmation } from '@/Composables/useConfirmation';
 
 const props = defineProps({
   user: Object,
   period: Object,
   scores: Array,
+  isMonitoring: Boolean,
+  monitoringEmployeeId: Number,
 });
 
 const { confirmAction } = useConfirmation();
@@ -107,6 +110,8 @@ const handleSign = async (scoreRecord) => {
           </span>
         </div>
       </div>
+
+      <KpiEmployeeNavigation v-if="isMonitoring && monitoringEmployeeId" :period-id="period.id" :employee-id="monitoringEmployeeId" active="final" />
 
       <!-- Main Table Card -->
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">

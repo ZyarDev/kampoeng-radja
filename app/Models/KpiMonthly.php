@@ -4,6 +4,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class KpiMonthly extends Model
 {
@@ -59,5 +60,9 @@ class KpiMonthly extends Model
     {
         return $this->hasMany(KpiRewardPunishment::class, 'monthly_id');
     }
-}
 
+    public function signatures(): MorphMany
+    {
+        return $this->morphMany(KpiSignature::class, 'signable');
+    }
+}

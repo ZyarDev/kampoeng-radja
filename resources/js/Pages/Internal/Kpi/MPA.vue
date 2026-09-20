@@ -1,385 +1,189 @@
 <script setup>
+import { computed } from 'vue';
+import { router, useForm } from '@inertiajs/vue3';
 import InternalDashboardLayout from '@/Layouts/InternalDashboardLayout.vue';
-import { useForm, Link, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { useConfirmation } from '@/composables/useConfirmation';
 
 const props = defineProps({
     user: Object,
     period: Object,
-    eligibleEvaluators: Array,
-    assignedEvaluatorId: Number,
+    eligibleEvaluators: { type: Array, default: () => [] },
+    assignedEvaluatorId: [Number, String],
     assignedEvaluatorName: String,
     isAssignedEvaluator: Boolean,
     isWindowOpen: Boolean,
     isBlocked: Boolean,
-    participants: Array,
+    assignmentLocked: Boolean,
+    isFormView: Boolean,
+    isHrdOrDirektur: Boolean,
+    participants: { type: Array, default: () => [] },
     selectedParticipant: Object,
     hasSubordinatesSnapshot: Boolean,
     isRatingSelf: Boolean,
     monthly: Object,
+    hrdData: { type: Object, default: () => ({ attendance: [], rewards: [] }) },
+    summary: { type: Object, default: () => ({}) },
 });
 
-// Evaluator assignment form (Super Admin)
-const assignForm = useForm({
-    evaluator_id: props.assignedEvaluatorId || '',
-});
-
-const submitAssign = () => {
-    assignForm.post(route('dashboard.kpi.mpa.assign', props.period.id), {
-        preserveScroll: true,
-    });
-};
-
-// Assessment Form
-const form = useForm({
-    karyawan_id: props.selectedParticipant?.karyawan_id || '',
-    kinerja_operasional: props.monthly?.kinerja_operasional ?? 35,
-    sikap_kerja: props.monthly?.sikap_kerja ?? 35,
-    team_work: props.monthly?.team_work ?? 35,
-    inisiatif: props.monthly?.inisiatif ?? 35,
-    kepemimpinan: props.monthly?.kepemimpinan ?? 35,
-    performance: props.monthly?.performance ?? '',
-    coaching: props.monthly?.coaching ?? '',
-    takeover_reason: '',
-});
-
-// Switch selected participant to assess
-const selectParticipant = (karyawanId) => {
-    router.get(route('dashboard.kpi.mpa', props.period.id), { karyawan_id: karyawanId }, { preserveState: true });
-};
-
-// Computed Rating & Score Preview
-const calculatedScore = computed(() => {
-    const ko = Number(form.kinerja_operasional) || 0;
-    const sk = Number(form.sikap_kerja) || 0;
-    const tw = Number(form.team_work) || 0;
-    const inis = Number(form.inisiatif) || 0;
-    const kep = props.hasSubordinatesSnapshot ? (Number(form.kepemimpinan) || 0) : 0;
-
-    const sum = ko + sk + tw + inis + (props.hasSubordinatesSnapshot ? kep : 0);
-    const count = props.hasSubordinatesSnapshot ? 5 : 4;
-    const avg = sum / count;
-
-    return ((avg / 45) * 5).toFixed(2);
-});
-
-const submitAssessment = () => {
-    form.post(route('dashboard.kpi.mpa', props.period.id), {
-        preserveScroll: true,
-    });
-};
-
-// HRD Takeover action
-const takeoverReason = ref('');
-const takeoverModalOpen = ref(false);
-
-const executeTakeover = () => {
-    if (!takeoverReason.value) return;
-    router.post(route('dashboard.kpi.mpa.takeover', { period: props.period.id, monthly: props.monthly.id }), {
-        takeover_reason: takeoverReason.value
-    }, {
-        preserveScroll: true,
-        onSuccess: () => {
-            takeoverModalOpen.value = false;
-        }
-    });
-};
-
+const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const periodLabel = computed(() => `${months[(props.period?.bulan || 1) - 1]} ${props.period?.tahun || ''}`);
+const inputPeriodLabel = computed(() => { const date = new Date(props.period.tahun, props.period.bulan, 1); return `1–5 ${months[date.getMonth()]} ${date.getFullYear()}`; });
 const isSuperAdmin = computed(() => props.user?.roleName === 'super_admin');
-const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-const periodLabel = computed(() => `${monthNames[props.period.bulan - 1]} ${props.period.tahun}`);
+const confirmation = useConfirmation();
+const canEdit = computed(() => { if (['completed', 'published'].includes(props.monthly?.status)) return false; return props.isHrdOrDirektur || (props.isAssignedEvaluator && props.isWindowOpen); });
+const canFinalize = computed(() => props.isHrdOrDirektur && !['completed', 'published'].includes(props.monthly?.status));
+const narrativeComplete = computed(() => Boolean(String(form.performance || '').trim() && String(form.coaching || '').trim()));
+
+const assignForm = useForm({ evaluator_id: props.assignedEvaluatorId || '' });
+const submitAssign = () => assignForm.post(route('dashboard.kpi.mpa.assign', props.period.id), { preserveScroll: true });
+const form = useForm({
+    action: 'draft', confirm_hrd: false, karyawan_id: props.selectedParticipant?.karyawan_id || '',
+    kinerja_operasional: props.monthly?.kinerja_operasional ?? null,
+    sikap_kerja: props.monthly?.sikap_kerja ?? null, team_work: props.monthly?.team_work ?? null,
+    inisiatif: props.monthly?.inisiatif ?? null, kepemimpinan: props.monthly?.kepemimpinan ?? null,
+    performance: props.monthly?.performance ?? '', coaching: props.monthly?.coaching ?? '', takeover_reason: '',
+});
+const attendanceRows = [
+    { kode: 'P1', label: 'Urusan Pribadi', rate: 0.5 },
+    { kode: 'DL', label: 'Datang Lambat', rate: 0.3 },
+    { kode: 'PC', label: 'Pulang Cepat', rate: 0.3 },
+    { kode: 'LC', label: 'Lupa Catat', rate: 0.3 },
+    { kode: 'M', label: 'Mangkir', rate: 3 },
+];
+const rewardRows = [
+    { jenis: 'major_award', label: 'Jasa Besar (Major Award)', rate: 7 },
+    { jenis: 'minor_award', label: 'Jasa Kecil (Minor Award)', rate: 3 },
+    { jenis: 'minor_demerit', label: 'Kesalahan Ringan (Minor Demerit)', rate: -4 },
+    { jenis: 'major_demerit', label: 'Kesalahan Besar (Major Demerit)', rate: -8 },
+];
+const hrdForm = useForm({
+    monthly_id: props.monthly?.id || '',
+    adjustments: attendanceRows.map((row) => ({ kode: row.kode, jumlah: props.hrdData?.attendance?.find((item) => item.kode === row.kode)?.jumlah ?? 0 })),
+    rewards: rewardRows.map((row) => ({ jenis: row.jenis, jumlah: props.hrdData?.rewards?.find((item) => item.jenis === row.jenis)?.jumlah ?? 0 })),
+});
+const attendanceTotal = (index) => (Number(hrdForm.adjustments[index]?.jumlah) || 0) * attendanceRows[index].rate;
+const attendanceSum = computed(() => hrdForm.adjustments.reduce((sum, _row, index) => sum + attendanceTotal(index), 0));
+const attendanceScore = computed(() => ((10 - attendanceSum.value) * 0.5).toFixed(2));
+const rewardTotal = (index) => (Number(hrdForm.rewards[index]?.jumlah) || 0) * rewardRows[index].rate;
+const rewardSum = computed(() => hrdForm.rewards.reduce((sum, _row, index) => sum + rewardTotal(index), 0));
+const saveHrdData = () => hrdForm.post(route('dashboard.kpi.monthly.save', props.period.id), { preserveScroll: true });
+
+const rangeText = {
+    low: { min: 1, max: 15, range: '1–15', title: 'Di bawah rata-rata' },
+    standard: { min: 16, max: 30, range: '16–30', title: 'Mencapai target / standar' },
+    high: { min: 31, max: 45, range: '31–45', title: 'Luar biasa' },
+};
+const operationalDimension = {
+    key: 'kinerja_operasional', label: 'Kinerja Operasional', description: 'Pencapaian target dan standar pekerjaan harian.',
+    criteria: [
+        { ...rangeText.low, description: 'Di bawah rata-rata — pencapaian target dan standar pekerjaan harian.' },
+        { ...rangeText.standard, description: 'Mencapai target / standar — pencapaian target dan standar pekerjaan harian.' },
+        { ...rangeText.high, description: 'Luar biasa — pencapaian target dan standar pekerjaan harian.' },
+    ],
+};
+const generalDimensions = computed(() => [
+    { key: 'sikap_kerja', label: 'Sikap Kerja', description: 'Antusiasme dan kesungguhan dalam bekerja.', criteria: [
+        { ...rangeText.low, description: 'Di bawah rata-rata — antusiasme dan kesungguhan dalam bekerja.' },
+        { ...rangeText.standard, description: 'Mencapai target / standar — antusiasme dan kesungguhan dalam bekerja.' },
+        { ...rangeText.high, description: 'Luar biasa — antusiasme dan kesungguhan dalam bekerja.' },
+    ] },
+    { key: 'team_work', label: 'Team Work', description: 'Kerja sama dan kontribusi dalam tim.', criteria: [
+        { ...rangeText.low, description: 'Di bawah rata-rata — kerja sama dan kontribusi dalam tim.' },
+        { ...rangeText.standard, description: 'Mencapai target / standar — kerja sama dan kontribusi dalam tim.' },
+        { ...rangeText.high, description: 'Luar biasa — kerja sama dan kontribusi dalam tim.' },
+    ] },
+    { key: 'inisiatif', label: 'Inisiatif', description: 'Inisiatif dan sikap proaktif dalam menyelesaikan masalah.', criteria: [
+        { ...rangeText.low, description: 'Di bawah rata-rata — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
+        { ...rangeText.standard, description: 'Mencapai target / standar — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
+        { ...rangeText.high, description: 'Luar biasa — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
+    ] },
+    ...(props.hasSubordinatesSnapshot ? [{ key: 'kepemimpinan', label: 'Kepemimpinan / Potensi Kepemimpinan', description: 'Kemampuan memengaruhi dan mengarahkan.', criteria: [
+        { ...rangeText.low, description: 'Di bawah rata-rata — kemampuan memengaruhi dan mengarahkan.' },
+        { ...rangeText.standard, description: 'Mencapai target / standar — kemampuan memengaruhi dan mengarahkan.' },
+        { ...rangeText.high, description: 'Luar biasa — kemampuan memengaruhi dan mengarahkan.' },
+    ] }] : []),
+]);
+const allDimensions = computed(() => [operationalDimension, ...generalDimensions.value]);
+const selectedRating = (key) => { const value = Number(form[key]); return Number.isInteger(value) && value >= 1 && value <= 45 ? value : null; };
+const ratingPercent = (key) => `${Math.round(((selectedRating(key) ?? 0) / 45) * 100)}%`;
+const setRating = (key, value) => { if (value === '' || value === null || value === undefined) { form[key] = null; return; } const parsed = Number.parseInt(value, 10); form[key] = Number.isNaN(parsed) ? null : Math.min(45, Math.max(1, parsed)); };
+const isActiveRange = (key, criterion) => { const value = selectedRating(key); return value !== null && value >= criterion.min && value <= criterion.max; };
+const calculatedScore = computed(() => { const values = allDimensions.value.map((dimension) => selectedRating(dimension.key)); if (values.some((value) => value === null)) return '–'; return (((values.reduce((total, value) => total + value, 0) / values.length) / 45) * 5).toFixed(2); });
+const openForm = (id) => router.get(route('dashboard.kpi.mpa', props.period.id), { karyawan_id: id });
+const saveAssessment = async (action) => {
+    if (action === 'draft' && !narrativeComplete.value) {
+        if (!String(form.performance || '').trim()) form.setError('performance', 'Bagian ini wajib diisi sebelum draft disimpan.');
+        if (!String(form.coaching || '').trim()) form.setError('coaching', 'Bagian ini wajib diisi sebelum draft disimpan.');
+        return;
+    }
+    if (action === 'complete' && !props.monthly?.completed_at) {
+        const confirmed = await confirmation.confirm({
+            type: 'warning',
+            title: 'Konfirmasi Penyelesaian MPA',
+            message: 'Data dari HRD belum tercatat untuk karyawan ini.',
+            description: 'Lanjutkan jika memang tidak ada komponen HRD yang perlu diisi.',
+            confirmText: 'Ya, Selesaikan MPA',
+        });
+        if (!confirmed) return;
+        form.confirm_hrd = true;
+    } else {
+        form.confirm_hrd = false;
+    }
+    form.action = action;
+    // Do not preserve the previous page state after saving; the list and
+    // summary must be rebuilt from the freshly persisted Monthly record.
+    form.post(route('dashboard.kpi.mpa', props.period.id), { preserveScroll: true, preserveState: false });
+};
+const statusLabel = (status) => ({ scheduled: 'Belum Dinilai', draft: 'Dalam Proses', completed: 'Sudah Dinilai', published: 'Sudah Dinilai', takeover: 'HRD Takeover' }[status] || 'Menunggu Lanjutan HRD');
 </script>
 
 <template>
-    <InternalDashboardLayout title="MPA Assessment" :user="user" content-width="wide">
-        <div class="mx-auto max-w-[1280px] p-6 space-y-6">
-            
-            <!-- Header Card -->
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                <div>
-                    <div class="flex items-center gap-2 text-xs font-semibold text-emerald-600 mb-1">
-                        <Link :href="route('dashboard.kpi.index')" class="hover:underline">KPI Utama</Link>
-                        <span>/</span>
-                        <span>Periode {{ periodLabel }}</span>
-                    </div>
-                    <h1 class="text-2xl font-bold text-slate-900">Monthly Performance Appraisal (MPA)</h1>
-                    <p class="text-sm text-slate-500 mt-0.5">
-                        Evaluator Utama: <strong class="text-emerald-700">{{ assignedEvaluatorName }}</strong> · Normal Window: <strong>Tanggal 1–5</strong>
-                    </p>
-                </div>
-
-                <!-- Status Badges -->
-                <div class="flex items-center gap-3">
-                    <span 
-                        :class="[
-                            'px-4 py-1.5 text-xs font-bold rounded-xl uppercase tracking-wider',
-                            isBlocked ? 'bg-rose-500 text-white shadow-sm' :
-                            isWindowOpen ? 'bg-emerald-500 text-white shadow-sm' : 'bg-amber-500 text-white'
-                        ]"
-                    >
-                        {{ isBlocked ? 'BLOCKED (Belum Ada Evaluator)' : isWindowOpen ? 'Window Aktif (1–5)' : 'Selesai / Terkunci' }}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Evaluator Assignment Card (Super Admin) -->
-            <div v-if="isSuperAdmin && !isBlocked" class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                    <h3 class="text-sm font-bold text-slate-800">Penetapan Evaluator Utama Periode {{ periodLabel }}</h3>
-                    <p class="text-xs text-slate-500">Super Admin dapat menetapkan satu primary evaluator sebelum hari terakhir bulan performa (23:59 WIB).</p>
-                </div>
-
-                <form @submit.prevent="submitAssign" class="flex items-center gap-2 w-full sm:w-auto">
-                    <select 
-                        v-model="assignForm.evaluator_id" 
-                        class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 font-medium"
-                    >
-                        <option value="" disabled>-- Pilih Evaluator --</option>
-                        <option v-for="ev in eligibleEvaluators" :key="ev.id" :value="ev.id">
-                            {{ ev.name }} ({{ ev.karyawan?.jabatan?.nama_jabatan || 'Peserta' }})
-                        </option>
-                    </select>
-
-                    <button 
-                        type="submit" 
-                        :disabled="assignForm.processing"
-                        class="px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 transition shadow-sm disabled:opacity-50"
-                    >
-                        Tetapkan
-                    </button>
+    <InternalDashboardLayout title="MPA" :user="user" content-width="wide">
+        <div class="w-full space-y-5 p-6">
+            <header class="flex flex-col justify-between gap-4 rounded-2xl border border-blue-100 bg-white p-6 shadow-sm md:flex-row md:items-start"><div><div class="mb-1 text-xs font-semibold text-[#53709d]">KPI <span class="mx-1">›</span> MPA<span v-if="isFormView"> <span class="mx-1">›</span> Beri Nilai</span></div><h1 class="text-3xl font-bold text-[#0b347d]">{{ isFormView ? 'Form Beri Nilai MPA' : 'MPA (Monthly Performance Appraisal)' }}</h1><p class="text-sm text-[#53709d]">{{ isFormView ? 'Lengkapi penilaian MPA untuk karyawan. Penilaian ini merupakan bagian dari record bulanan yang sama.' : 'Manajemen Penilaian Akhir (MPA)' }}</p></div><div class="rounded-xl bg-emerald-50 px-5 py-3 text-sm text-emerald-700"><strong>Periode Aktif</strong><div class="font-bold">{{ periodLabel }}</div></div></header>
+            <template v-if="!isFormView">
+                <section class="rounded-xl border border-blue-100 bg-white p-5 shadow-sm"><div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div><h2 class="text-lg font-bold text-[#0b347d]">👥 Penetapan Penilai Bulanan</h2><p class="text-xs text-[#53709d]">Satu periode memiliki satu penilai utama. Periode pengisian: {{ inputPeriodLabel }}.</p></div><form v-if="isSuperAdmin" @submit.prevent="submitAssign" class="flex gap-2"><select v-model="assignForm.evaluator_id" :disabled="assignmentLocked" class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs"><option value="" disabled>Pilih karyawan penilai</option><option v-for="ev in eligibleEvaluators" :key="ev.id" :value="ev.id">{{ ev.position ? `${ev.name} (${ev.position})` : ev.name }}</option></select><button :disabled="assignmentLocked || assignForm.processing" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Tetapkan Penilai</button></form></div><div class="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">Penilai utama: <strong>{{ assignedEvaluatorName }}</strong>. Penetapan terkunci setelah hari terakhir bulan performa.</div></section>
+                <div class="grid grid-cols-2 gap-3 md:grid-cols-4"><div class="rounded-xl bg-blue-50 p-4"><div class="text-xs text-blue-700">Total Karyawan Dinilai</div><strong class="text-2xl text-[#0b347d]">{{ summary.total || 0 }}</strong></div><div class="rounded-xl bg-emerald-50 p-4"><div class="text-xs text-emerald-700">Sudah Dinilai</div><strong class="text-2xl text-emerald-700">{{ summary.completed || 0 }}</strong></div><div class="rounded-xl bg-amber-50 p-4"><div class="text-xs text-amber-700">Belum Dinilai</div><strong class="text-2xl text-amber-700">{{ summary.pending || 0 }}</strong></div><div class="rounded-xl bg-violet-50 p-4"><div class="text-xs text-violet-700">Menunggu Lanjutan HRD</div><strong class="text-2xl text-violet-700">{{ summary.hrd || 0 }}</strong></div></div>
+                <section class="overflow-hidden rounded-xl border border-blue-100 bg-white shadow-sm"><div class="flex items-center justify-between border-b border-blue-100 p-5"><div><h2 class="text-xl font-bold text-[#0b347d]">▤ Daftar Karyawan</h2><p class="text-xs text-[#53709d]">Pilih karyawan untuk memberikan atau melihat penilaian MPA.</p></div><span class="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">{{ participants.length }} karyawan</span></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-[#f3f7fd] text-left text-xs font-bold text-[#53709d]"><tr><th class="px-4 py-3">No</th><th class="px-4 py-3">Nama</th><th class="px-4 py-3">Jabatan</th><th class="px-4 py-3">Departemen</th><th class="px-4 py-3">Penempatan</th><th class="px-4 py-3">Status Penilaian</th><th class="px-4 py-3 text-right">Aksi</th></tr></thead><tbody><tr v-for="(participant, index) in participants" :key="participant.id" class="border-t border-blue-50"><td class="px-4 py-3 text-[#53709d]">{{ index + 1 }}</td><td class="px-4 py-3 font-bold text-[#173f82]">{{ participant.nama }}</td><td class="px-4 py-3 text-[#53709d]">{{ participant.jabatan }}</td><td class="px-4 py-3 text-[#53709d]">{{ participant.departemen }}</td><td class="px-4 py-3 text-[#53709d]">{{ participant.penempatan || '-' }}</td><td class="px-4 py-3"><span :class="participant.status === 'completed' || participant.status === 'published' ? 'bg-emerald-100 text-emerald-700' : participant.status === 'takeover' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'" class="rounded-full px-2.5 py-1 text-xs font-bold">{{ statusLabel(participant.status) }}</span></td><td class="px-4 py-3 text-right"><button @click="openForm(participant.karyawan_id)" class="rounded-lg px-3 py-2 text-xs font-bold" :class="participant.status === 'completed' || participant.status === 'published' ? 'border border-slate-200 text-slate-500' : 'bg-blue-600 text-white'">{{ participant.status === 'completed' || participant.status === 'published' ? 'Dinilai' : 'Beri Nilai' }}</button></td></tr></tbody></table></div></section>
+            </template>
+            <template v-else>
+                <section class="rounded-xl border border-blue-100 bg-white p-4 shadow-sm"><div class="mb-3 flex items-center justify-between gap-3"><h2 class="text-lg font-bold text-[#0b347d]">👤 Informasi Karyawan</h2><span class="rounded-full px-3 py-1 text-xs font-bold" :class="monthly?.status === 'completed' || monthly?.status === 'published' ? 'bg-emerald-100 text-emerald-700' : monthly?.status === 'draft' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'">{{ statusLabel(monthly?.status) }}</span></div><div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4"><div v-for="field in [['Nama', selectedParticipant?.karyawan?.nama], ['NIK', selectedParticipant?.karyawan?.nik], ['Jabatan', selectedParticipant?.jabatan_snapshot], ['Departemen', selectedParticipant?.departemen_snapshot], ['Penempatan', selectedParticipant?.penempatan_snapshot], ['Atasan Langsung', selectedParticipant?.atasan_langsung_snapshot], ['Atasan Kedua', selectedParticipant?.atasan_kedua_snapshot || 'N/A'], ['Periode', periodLabel]]" :key="field[0]" class="rounded-lg bg-[#f3f7fd] px-3 py-2"><div class="text-[11px] text-[#6480aa]">{{ field[0] }}</div><strong class="text-sm text-[#173f82]">{{ field[1] || '-' }}</strong></div></div></section>
+                <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">Penilaian umum diisi penilai. Absensi dan Reward/Punishment tetap menjadi bagian HRD pada record Monthly yang sama.</div>
+                <form @submit.prevent="saveAssessment('draft')" class="space-y-5">
+                    <section class="space-y-3"><div><h2 class="text-xl font-bold text-[#0b347d]">1. Kinerja Operasional</h2><p class="mt-1 text-xs text-[#53709d]">Pilih nilai berdasarkan kriteria yang selalu ditampilkan di bawah ini.</p></div><article class="rounded-xl border border-blue-100 bg-white p-5 shadow-sm"><div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 class="text-lg font-bold text-[#173f82]">{{ operationalDimension.label }}</h3><p class="mt-1 text-sm text-[#60789f]">{{ operationalDimension.description }}</p></div><div class="shrink-0 rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">Nilai: <strong class="text-xl">{{ selectedRating(operationalDimension.key) ?? '–' }}</strong> / 45</div></div><div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3"><div v-for="criterion in operationalDimension.criteria" :key="criterion.range" :class="isActiveRange(operationalDimension.key, criterion) ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-slate-50'" class="rounded-xl border p-4 transition"><div class="flex items-center justify-between gap-2"><span class="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#173f82]">{{ criterion.range }}</span><span v-if="isActiveRange(operationalDimension.key, criterion)" class="text-xs font-bold text-blue-700">Terpilih</span></div><h4 class="mt-3 text-sm font-bold text-[#173f82]">{{ criterion.title }}</h4><p class="mt-1 text-xs leading-5 text-slate-600">{{ criterion.description }}</p></div></div><div class="mt-5"><div class="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600"><span>Pilih nilai penilaian</span><span>1–45</span></div><div class="grid grid-cols-5 gap-1 sm:grid-cols-9 lg:grid-cols-[repeat(15,minmax(0,1fr))]"><button v-for="n in 45" :key="n" type="button" :disabled="!canEdit" :class="selectedRating(operationalDimension.key) === n ? 'bg-blue-600 text-white' : 'bg-[#f3f7fd] text-[#173f82]'" class="rounded border border-blue-100 py-1.5 text-[10px] font-bold transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60" @click="setRating(operationalDimension.key, n)">{{ n }}</button></div></div><p v-if="form.errors.kinerja_operasional" class="mt-2 text-xs font-semibold text-rose-600">{{ form.errors.kinerja_operasional }}</p></article></section>
+                    <section class="space-y-3"><div><h2 class="text-xl font-bold text-[#0b347d]">2. Penilaian Umum</h2><p class="mt-1 text-xs text-[#53709d]">Nilai setiap dimensi berdasarkan deskripsi rentang yang sesuai.</p></div><article v-for="(dimension, index) in generalDimensions" :key="dimension.key" class="rounded-xl border border-blue-100 bg-white p-5 shadow-sm"><div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div class="text-xs font-bold uppercase tracking-wide text-blue-600">{{ String.fromCharCode(65 + index) }}. Dimensi</div><h3 class="mt-1 text-lg font-bold text-[#173f82]">{{ dimension.label }}</h3><p class="mt-1 text-sm text-[#60789f]">{{ dimension.description }}</p></div><div class="shrink-0 rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800">Nilai: <strong class="text-xl">{{ selectedRating(dimension.key) ?? '–' }}</strong> / 45</div></div><div class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3"><div v-for="criterion in dimension.criteria" :key="criterion.range" :class="isActiveRange(dimension.key, criterion) ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-slate-50'" class="rounded-xl border p-4 transition"><div class="flex items-center justify-between gap-2"><span class="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#173f82]">{{ criterion.range }}</span><span v-if="isActiveRange(dimension.key, criterion)" class="text-xs font-bold text-blue-700">Terpilih</span></div><h4 class="mt-3 text-sm font-bold text-[#173f82]">{{ criterion.title }}</h4><p class="mt-1 text-xs leading-5 text-slate-600">{{ criterion.description }}</p></div></div><div class="mt-5"><div class="mb-2 flex items-center justify-between text-xs font-semibold text-slate-600"><span>Pilih nilai penilaian</span><span>1–45</span></div><div class="grid grid-cols-5 gap-1 sm:grid-cols-9 lg:grid-cols-[repeat(15,minmax(0,1fr))]"><button v-for="n in 45" :key="n" type="button" :disabled="!canEdit" :class="selectedRating(dimension.key) === n ? 'bg-blue-600 text-white' : 'bg-[#f3f7fd] text-[#173f82]'" class="rounded border border-blue-100 py-1.5 text-[10px] font-bold transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60" @click="setRating(dimension.key, n)">{{ n }}</button></div></div><p v-if="form.errors[dimension.key]" class="mt-2 text-xs font-semibold text-rose-600">{{ form.errors[dimension.key] }}</p></article></section>                    <section class="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
+                        <div class="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div><h2 class="text-xl font-bold text-[#0b347d]">3. Nilai Penilaian Umum</h2><p class="mt-1 text-xs text-[#60789f]">Ringkasan nilai setiap dimensi yang digunakan dalam perhitungan penilaian umum.</p></div>
+                                    <span class="hidden rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 sm:inline-flex">Skala 1–45</span>
+                                </div>
+                                <div class="mt-4 grid gap-2">
+                                    <div v-for="dimension in allDimensions" :key="dimension.key" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                        <div class="flex items-center justify-between gap-3"><span class="text-sm font-semibold text-[#173f82]">{{ dimension.label }}</span><span class="rounded-lg bg-white px-2.5 py-1 text-sm font-bold text-[#173f82]">{{ selectedRating(dimension.key) ?? '–' }} <span class="text-xs font-normal text-slate-500">/ 45</span></span></div>
+                                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div class="h-full rounded-full bg-blue-600 transition-all" :style="{ width: ratingPercent(dimension.key) }"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex min-w-[220px] flex-col justify-center rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-green-100 px-6 py-6 text-center shadow-sm">
+                                <span class="text-xs font-bold uppercase tracking-wide text-emerald-700">Nilai Penilaian Umum</span>
+                                <strong class="mt-2 text-5xl leading-none text-emerald-700">{{ calculatedScore }}</strong>
+                                <span class="mt-2 text-sm font-semibold text-emerald-800">dari 5</span>
+                                <span class="mx-auto mt-4 rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-emerald-700">Hasil perhitungan MPA</span>
+                            </div>
+                        </div>
+                    </section>                    <section class="rounded-xl border border-blue-100 bg-white p-5 shadow-sm">
+                        <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center"><div><h2 class="text-xl font-bold text-[#0b347d]">4. Data dari HRD</h2><p class="mt-1 text-xs text-[#60789f]">Penilaian absensi dan reward/punishment dilengkapi oleh HRD pada record Monthly yang sama.</p></div><span v-if="isHrdOrDirektur" class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Mode HRD</span><span v-else class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Read-only</span></div>
+                        <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                            <div class="overflow-hidden rounded-xl border border-blue-100"><div class="bg-[#eef4fb] px-4 py-3 text-sm font-bold text-[#173f82]">Penilaian Absensi</div><div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 text-left text-slate-600"><tr><th class="px-3 py-2">Kriteria</th><th class="px-3 py-2 text-center">Kode</th><th class="px-3 py-2 text-center">Potongan</th><th class="px-3 py-2 text-center">Jumlah Hari</th><th class="px-3 py-2 text-right">Total</th></tr></thead><tbody><tr v-for="(row, index) in attendanceRows" :key="row.kode" class="border-t border-blue-50"><td class="px-3 py-2 text-[#173f82]">{{ row.label }}</td><td class="px-3 py-2 text-center text-slate-500">{{ row.kode }}</td><td class="px-3 py-2 text-center text-slate-600">{{ row.rate }}</td><td class="px-3 py-2 text-center"><input v-if="isHrdOrDirektur" v-model.number="hrdForm.adjustments[index].jumlah" type="number" min="0" step="1" class="w-20 rounded border border-blue-200 px-2 py-1 text-center text-xs"/><span v-else class="text-slate-600">{{ hrdData?.attendance?.find((item) => item.kode === row.kode)?.jumlah || 0 }}</span></td><td class="px-3 py-2 text-right font-semibold text-[#173f82]">{{ attendanceTotal(index).toFixed(2) }}</td></tr></tbody><tfoot><tr class="border-t border-blue-100 bg-slate-50"><td colspan="4" class="px-3 py-2 text-right font-bold text-[#173f82]">Nilai Absensi</td><td class="px-3 py-2 text-right font-bold text-emerald-700">{{ attendanceScore }}</td></tr></tfoot></table></div></div>
+                            <div class="overflow-hidden rounded-xl border border-blue-100"><div class="bg-[#eef4fb] px-4 py-3 text-sm font-bold text-[#173f82]">Penambahan atau Pengurangan Nilai</div><div class="overflow-x-auto"><table class="w-full text-xs"><thead class="bg-slate-50 text-left text-slate-600"><tr><th class="px-3 py-2">Kriteria</th><th class="px-3 py-2 text-center">Angka</th><th class="px-3 py-2 text-center">Jumlah</th><th class="px-3 py-2 text-right">Total</th></tr></thead><tbody><tr v-for="(row, index) in rewardRows" :key="row.jenis" class="border-t border-blue-50"><td class="px-3 py-2 text-[#173f82]">{{ row.label }}</td><td class="px-3 py-2 text-center text-slate-600">{{ row.rate > 0 ? '+' : '' }}{{ row.rate }}</td><td class="px-3 py-2 text-center"><input v-if="isHrdOrDirektur" v-model.number="hrdForm.rewards[index].jumlah" type="number" min="0" step="1" class="w-20 rounded border border-blue-200 px-2 py-1 text-center text-xs"/><span v-else class="text-slate-600">{{ hrdData?.rewards?.find((item) => item.jenis === row.jenis)?.jumlah || 0 }}</span></td><td class="px-3 py-2 text-right font-semibold text-[#173f82]">{{ rewardTotal(index).toFixed(2) }}</td></tr></tbody><tfoot><tr class="border-t border-blue-100 bg-slate-50"><td colspan="3" class="px-3 py-2 text-right font-bold text-[#173f82]">Total</td><td class="px-3 py-2 text-right font-bold text-emerald-700">{{ rewardSum.toFixed(2) }}</td></tr></tfoot></table></div></div>
+                        </div>
+                        <p v-if="isHrdOrDirektur && !monthly?.completed_at" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">Data HRD belum tercatat. Jika komponen HRD memang tidak perlu diisi, konfirmasi akan ditampilkan saat Anda menyelesaikan MPA.</p>
+                    </section>
+                    <section class="grid grid-cols-1 gap-4 lg:grid-cols-2"><div class="rounded-xl border border-blue-100 bg-white p-4"><h2 class="text-lg font-bold text-[#0b347d]">5. Penjelasan Berkaitan Dengan Performance</h2><textarea v-model="form.performance" :disabled="!canEdit" rows="4" :class="form.errors.performance ? 'border-rose-400 ring-1 ring-rose-200' : 'border-blue-100'" class="mt-3 w-full rounded-lg border p-3 text-xs disabled:bg-slate-50"></textarea><p v-if="form.errors.performance" class="mt-2 flex items-center gap-1 text-xs font-semibold text-rose-600"><span aria-hidden="true">⚠</span>{{ form.errors.performance }}</p></div><div class="rounded-xl border border-blue-100 bg-white p-4"><h2 class="text-lg font-bold text-[#0b347d]">6. Rencana Perbaikan (coaching, counseling)</h2><textarea v-model="form.coaching" :disabled="!canEdit" rows="4" :class="form.errors.coaching ? 'border-rose-400 ring-1 ring-rose-200' : 'border-blue-100'" class="mt-3 w-full rounded-lg border p-3 text-xs disabled:bg-slate-50"></textarea><p v-if="form.errors.coaching" class="mt-2 flex items-center gap-1 text-xs font-semibold text-rose-600"><span aria-hidden="true">⚠</span>{{ form.errors.coaching }}</p></div></section>
+                    <div class="flex flex-wrap items-center justify-end gap-2"><button type="button" @click="router.get(route('dashboard.kpi.mpa', period.id))" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Kembali</button><button type="submit" :disabled="!canEdit || form.processing" class="rounded-lg border border-blue-600 px-4 py-2 text-xs font-bold text-blue-700 disabled:opacity-50">Simpan Draft</button><button v-if="canFinalize" type="button" :disabled="form.processing || !narrativeComplete" @click="saveAssessment('complete')" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Selesaikan Penilaian MPA</button></div>
                 </form>
-            </div>
-
-            <!-- Blocked / Takeover Alert -->
-            <div v-if="isBlocked" class="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-sm flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <span class="text-xl">⚠️</span>
-                    <div>
-                        <strong class="font-bold">MPA Status: BLOCKED!</strong>
-                        <p class="text-xs mt-0.5">Penetapan evaluator utama tidak dilakukan sampai deadline. Penilaian hanya dapat diselesaikan oleh Direktur / HRD melalui fitur <strong>Takeover</strong>.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Main Layout: Participant List Sidebar + Assessment Form -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                <!-- Left Column: Participant List -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 h-fit">
-                    <div class="border-b border-slate-100 pb-3">
-                        <h2 class="text-sm font-bold text-slate-800">Daftar Peserta Penilaian</h2>
-                        <p class="text-[11px] text-slate-500">Pilih karyawan untuk memberikan atau melihat nilai MPA.</p>
-                    </div>
-
-                    <div class="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-                        <div 
-                            v-for="p in participants" 
-                            :key="p.id"
-                            @click="selectParticipant(p.karyawan_id)"
-                            :class="[
-                                'p-3 rounded-xl border transition cursor-pointer flex items-center justify-between',
-                                selectedParticipant?.karyawan_id === p.karyawan_id 
-                                    ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-400/20' 
-                                    : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100'
-                            ]"
-                        >
-                            <div>
-                                <h4 class="text-xs font-bold text-slate-900">{{ p.nama }}</h4>
-                                <span class="text-[11px] text-slate-500 block">{{ p.jabatan }}</span>
-                                <span v-if="p.is_self" class="text-[10px] font-bold text-amber-600">(Evaluator / Diri Sendiri)</span>
-                            </div>
-
-                            <div class="text-right">
-                                <span 
-                                    :class="[
-                                        'px-2 py-0.5 text-[10px] font-bold rounded uppercase block mb-1',
-                                        p.status === 'completed' || p.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                                    ]"
-                                >
-                                    {{ p.status === 'completed' || p.status === 'published' ? 'Selesai' : 'Belum' }}
-                                </span>
-                                <span class="text-xs font-black text-emerald-700">{{ p.mpa_score ? p.mpa_score.toFixed(2) : '0.00' }}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column: Assessment Form -->
-                <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6" v-if="selectedParticipant">
-                    
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-4">
-                        <div>
-                            <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Formulir Evaluasi MPA</span>
-                            <h2 class="text-xl font-bold text-slate-900 mt-0.5">{{ selectedParticipant.karyawan?.nama }}</h2>
-                            <p class="text-xs text-slate-500">{{ selectedParticipant.jabatan_snapshot }} · {{ selectedParticipant.departemen_snapshot }}</p>
-                        </div>
-
-                        <!-- Self Exclusion Warning -->
-                        <div v-if="isRatingSelf" class="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-xl text-xs font-bold border border-amber-200">
-                            🔒 Record Evaluator Diri Sendiri (Hanya HRD/Direktur)
-                        </div>
-                    </div>
-
-                    <form @submit.prevent="submitAssessment" class="space-y-6">
-                        
-                        <!-- 5 Ratings Scale 1-45 -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            
-                            <!-- 1. Kinerja Operasional -->
-                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-                                <label class="block text-xs font-bold text-slate-800">1. Kinerja Operasional (1–45) <span class="text-rose-500">*</span></label>
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.kinerja_operasional" 
-                                    min="1" 
-                                    max="45"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    class="w-full text-sm font-bold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                />
-                            </div>
-
-                            <!-- 2. Sikap Kerja -->
-                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-                                <label class="block text-xs font-bold text-slate-800">2. Sikap Kerja (1–45) <span class="text-rose-500">*</span></label>
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.sikap_kerja" 
-                                    min="1" 
-                                    max="45"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    class="w-full text-sm font-bold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                />
-                            </div>
-
-                            <!-- 3. Team Work -->
-                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-                                <label class="block text-xs font-bold text-slate-800">3. Team Work (1–45) <span class="text-rose-500">*</span></label>
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.team_work" 
-                                    min="1" 
-                                    max="45"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    class="w-full text-sm font-bold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                />
-                            </div>
-
-                            <!-- 4. Inisiatif -->
-                            <div class="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
-                                <label class="block text-xs font-bold text-slate-800">4. Inisiatif (1–45) <span class="text-rose-500">*</span></label>
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.inisiatif" 
-                                    min="1" 
-                                    max="45"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    class="w-full text-sm font-bold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                />
-                            </div>
-
-                            <!-- 5. Kepemimpinan (Only if has subordinates snapshot) -->
-                            <div v-if="hasSubordinatesSnapshot" class="p-4 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2 sm:col-span-2">
-                                <label class="block text-xs font-bold text-slate-800">5. Kepemimpinan / Leadership (1–45) <span class="text-rose-500">*</span></label>
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.kepemimpinan" 
-                                    min="1" 
-                                    max="45"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    class="w-full text-sm font-bold bg-white border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                />
-                                <span class="text-[11px] text-slate-400 block">Komponen ini wajib diisi karena peserta memiliki bawahan pada snapshot periode.</span>
-                            </div>
-
-                        </div>
-
-                        <!-- Text Evidence Fields (Text-only per PRD) -->
-                        <div class="space-y-4">
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Penjelasan Kinerja (Performance Explanation)</label>
-                                <textarea 
-                                    v-model="form.performance"
-                                    rows="3"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    placeholder="Jelaskan secara kualitatif evaluasi pencapaian kerja karyawan..."
-                                    class="w-full text-xs bg-white border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                ></textarea>
-                            </div>
-
-                            <div>
-                                <label class="block text-xs font-semibold text-slate-700 mb-1">Rencana Coaching / Counseling Plan</label>
-                                <textarea 
-                                    v-model="form.coaching"
-                                    rows="3"
-                                    :disabled="isRatingSelf && !isSuperAdmin"
-                                    placeholder="Tuliskan arahan pengembangan diri, coaching, atau counseling plan..."
-                                    class="w-full text-xs bg-white border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-emerald-500 disabled:bg-slate-100"
-                                ></textarea>
-                            </div>
-                        </div>
-
-                        <!-- Calculated Score Summary Box -->
-                        <div class="p-5 bg-slate-900 text-white rounded-2xl flex items-center justify-between gap-4 shadow-xl">
-                            <div>
-                                <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Calculated Score PRD</span>
-                                <h4 class="text-lg font-bold text-white mt-0.5">Nilai Akhir MPA</h4>
-                                <p class="text-xs text-slate-400">Skala 1 - 5 (Normal Max = 5.00)</p>
-                            </div>
-
-                            <div class="text-right">
-                                <span class="text-3xl font-black text-emerald-400">{{ calculatedScore }}</span>
-                            </div>
-                        </div>
-
-                        <!-- Actions -->
-                        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
-                            <button 
-                                v-if="isSuperAdmin && monthly && !monthly.takeover_by"
-                                type="button"
-                                @click="takeoverModalOpen = true"
-                                class="px-4 py-2 bg-amber-500 text-white font-bold text-xs rounded-xl hover:bg-amber-600 transition shadow-sm"
-                            >
-                                Activate HRD Takeover
-                            </button>
-
-                            <button 
-                                type="submit"
-                                :disabled="form.processing || (isRatingSelf && !isSuperAdmin)"
-                                class="px-6 py-2.5 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition shadow-md shadow-emerald-200 disabled:opacity-50 ml-auto"
-                            >
-                                {{ form.processing ? 'Menyimpan...' : 'Simpan Penilaian MPA' }}
-                            </button>
-                        </div>
-
-                    </form>
-
-                </div>
-
-            </div>
-
-            <!-- Takeover Modal -->
-            <div v-if="takeoverModalOpen" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-                <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-                    <h3 class="text-lg font-bold text-slate-900">Konfirmasi HRD Takeover</h3>
-                    <p class="text-xs text-slate-500">Melakukan takeover memungkinkan HRD melengkapi atau menyelesaikan penilaian MPA ini.</p>
-                    
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 mb-1">Alasan Takeover <span class="text-rose-500">*</span></label>
-                        <textarea 
-                            v-model="takeoverReason"
-                            rows="3"
-                            placeholder="Tuliskan alasan takeover (contoh: Evaluator nonaktif / melewati window)..."
-                            class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-emerald-500"
-                        ></textarea>
-                    </div>
-
-                    <div class="flex items-center justify-end gap-2 pt-2">
-                        <button @click="takeoverModalOpen = false" class="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl">Batal</button>
-                        <button @click="executeTakeover" :disabled="!takeoverReason" class="px-4 py-2 text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 rounded-xl disabled:opacity-50">Proses Takeover</button>
-                    </div>
-                </div>
-            </div>
-
+            </template>
         </div>
     </InternalDashboardLayout>
 </template>

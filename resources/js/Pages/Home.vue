@@ -452,14 +452,8 @@ const featuredCards = computed(() =>
         >
             <div class="mx-auto max-w-[1280px]">
                 <header class="mx-auto max-w-[720px] text-center">
-                    <span
-                        class="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[#ffe3b7] backdrop-blur-sm"
-                    >
-                        <span aria-hidden="true">🎁</span>
-                        Penawaran Spesial
-                    </span>
                     <h2
-                        class="mt-4 font-heading text-[42px] font-extrabold leading-none sm:text-[52px] lg:text-[60px]"
+                        class="font-heading text-[42px] font-extrabold leading-none sm:text-[52px] lg:text-[60px]"
                     >
                         Promo
                     </h2>
@@ -756,7 +750,7 @@ const featuredCards = computed(() =>
                 </h2>
                 <div v-if="partners?.length" class="mt-8 overflow-hidden">
                     <div
-                        class="animate-marquee flex w-max will-change-transform"
+                        class="partners-marquee flex w-max will-change-transform"
                     >
                         <div class="flex shrink-0 items-center gap-16 pr-16">
                             <div
@@ -814,6 +808,27 @@ const featuredCards = computed(() =>
 </template>
 
 <style scoped>
+.partners-marquee {
+    animation: partners-marquee 34s linear infinite;
+}
+
+@keyframes partners-marquee {
+    from {
+        transform: translate3d(0, 0, 0);
+    }
+
+    to {
+        transform: translate3d(-50%, 0, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .partners-marquee {
+        animation: none;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
 section:nth-of-type(2) {
     background:
         radial-gradient(

@@ -30,28 +30,39 @@ class KpiController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $employee = $user->karyawan;
+        abort_unless($user->role()->value('nama_role') === 'super_admin', 403, 'Monitoring Periode KPI hanya dapat diakses oleh Super Admin/HRD.');
 
-        $periods = KpiPeriod::withCount('participants')->orderBy('tahun', 'desc')
+        $periods = KpiPeriod::query()
+            ->with([
+                'evaluator.karyawan',
+                'participants.karyawan.user',
+                'participants.individualScore',
+                'participants.opsItems',
+                'participants.monthly.signatures',
+            ])
+            ->orderBy('tahun', 'desc')
             ->orderBy('bulan', 'desc')
-            ->get()
-            ->map(function (KpiPeriod $period) {
-                $period->configuration_errors = $period->participants()->whereNull('atasan_langsung_id')->count();
-                return $period;
-            });
+            ->get();
 
         $activePeriod = $periods->first();
+        $selectedPeriodId = $request->integer('period_id');
+        $selectedPeriod = $selectedPeriodId
+            ? $periods->firstWhere('id', $selectedPeriodId)
+            : $activePeriod;
 
-        $myDailyMissingCount = 0;
-        if ($employee) {
-            $myDailyMissingCount = $this->calculateMissingDailyCount($employee->id, now('Asia/Jakarta'));
-        }
+        abort_if($selectedPeriodId && ! $selectedPeriod, 404, 'Periode KPI tidak ditemukan.');
+
+        $periodSummaries = $periods
+            ->map(fn (KpiPeriod $period) => $this->periodMonitoringPayload($period, false))
+            ->values();
 
         return inertia('Internal/Kpi/Index', [
             'user' => $this->userPayload($request),
-            'periods' => $periods,
-            'activePeriod' => $activePeriod,
-            'missingDailyCount' => $myDailyMissingCount,
+            'periods' => $periodSummaries,
+            'activePeriodId' => $activePeriod?->id,
+            'selectedPeriod' => $selectedPeriod
+                ? $this->periodMonitoringPayload($selectedPeriod, true)
+                : null,
         ]);
     }
 
@@ -196,11 +207,11 @@ class KpiController extends Controller
         $employee->loadMissing(['jabatan', 'departemen', 'penempatan', 'atasanLangsung']);
         abort_if($this->isExcludedKpiPosition($employee->jabatan?->nama_jabatan), 403, 'Jabatan ini tidak wajib mengisi Daily Report.');
 
-        $dateStr = $request->input('tanggal', now('Asia/Jakarta')->toDateString());
+        $dateStr = $request->input('tanggal', KpiClock::today()->toDateString());
         $targetDate = Carbon::parse($dateStr, 'Asia/Jakarta');
         abort_unless($targetDate->format('Y-m-d') === $dateStr, 422, 'Format tanggal tidak valid.');
-        $today = now('Asia/Jakarta')->startOfDay();
-        $yesterday = now('Asia/Jakarta')->subDay()->startOfDay();
+        $today = KpiClock::today();
+        $yesterday = KpiClock::now()->subDay()->startOfDay();
 
         $isEditable = $targetDate->equalTo($today) || $targetDate->equalTo($yesterday);
 
@@ -267,7 +278,7 @@ class KpiController extends Controller
 
                 $report->update([
                     'status' => 'waiting_approval',
-                    'submitted_at' => now('Asia/Jakarta'),
+                    'submitted_at' => KpiClock::now(),
                     'atasan_snapshot_id' => $report->atasan_snapshot_id ?? $request->user()->karyawan?->atasan_langsung_id,
                 ]);
                 foreach (array_diff($oldPaths, $newPaths) as $oldPath) {
@@ -327,7 +338,7 @@ class KpiController extends Controller
         $attendanceByDate = Absensi::where('karyawan_id', $employee->id)
             ->whereBetween('tanggal_absensi', [$historyStart->toDateString(), $historyStart->copy()->endOfMonth()->toDateString()])
             ->pluck('status_kehadiran', 'tanggal_absensi');
-        $today = now('Asia/Jakarta')->startOfDay();
+        $today = KpiClock::today();
         $dailyCalendar = collect(range(1, $historyStart->daysInMonth))->map(function ($day) use ($historyStart, $reportsByDate, $attendanceByDate, $today) {
             $date = $historyStart->copy()->day($day);
             $key = $date->toDateString();
@@ -392,7 +403,7 @@ class KpiController extends Controller
         $report->update([
             'status' => 'approved',
             'approved_by' => $user->id,
-            'approved_at' => now('Asia/Jakarta'),
+            'approved_at' => KpiClock::now(),
             'approval_source' => 'manual',
             'approval_signature_path' => $signaturePath,
         ]);
@@ -425,7 +436,7 @@ class KpiController extends Controller
                 $report->update([
                     'status' => 'approved',
                     'approved_by' => $user->id,
-                    'approved_at' => now('Asia/Jakarta'),
+                    'approved_at' => KpiClock::now(),
                     'approval_source' => 'manual',
                     'approval_signature_path' => $signaturePath,
                 ]);
@@ -443,7 +454,7 @@ class KpiController extends Controller
         abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Tanda tangan Atasan Langsung belum tersedia.');
 
         $extension = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-        $destination = 'kpi/daily-signatures/'.$report->id.'_'.now('Asia/Jakarta')->format('YmdHisv').'.'.$extension;
+        $destination = 'kpi/daily-signatures/'.$report->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$extension;
         abort_unless(Storage::disk('public')->copy($source, $destination), 422, 'Snapshot tanda tangan Daily Report gagal disimpan.');
 
         return $destination;
@@ -472,7 +483,7 @@ class KpiController extends Controller
         }
 
         // K-OPS uses the real application clock; the local debug clock is reserved for KI.
-        $opsNow = now('Asia/Jakarta');
+        $opsNow = KpiClock::now();
         $opsStart = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay();
         $opsEnd = $opsStart->copy()->addDay()->endOfDay();
         $isWindowAllowed = $opsNow->between($opsStart, $opsEnd);
@@ -569,56 +580,137 @@ class KpiController extends Controller
     public function ops(Request $request, KpiPeriod $period)
     {
         $participant = $this->getParticipantOrTarget($request, $period)
-            ->load(['karyawan.user', 'karyawan.jabatan', 'atasanLangsung.user', 'atasanLangsung.jabatan']);
+            ->load([
+                'period',
+                'karyawan.user',
+                'karyawan.jabatan',
+                'karyawan.departemen',
+                'karyawan.penempatan',
+                'atasanLangsung.user',
+                'atasanLangsung.jabatan',
+            ]);
         $items = KpiOpsItem::where('kpi_participant_id', $participant->id)
             ->orderBy('urutan', 'asc')
             ->get();
 
         $isWindowAllowed = $this->isHardWindowActive($period);
+        $windowStart = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay();
+        $windowEnd = $windowStart->copy()->addDay()->endOfDay();
+        $clockNow = KpiClock::now();
+        $windowState = $clockNow->lt($windowStart)
+            ? 'upcoming'
+            : ($clockNow->lte($windowEnd) ? 'open' : 'closed');
         $user = $request->user();
-        $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isSelf = $participant->karyawan_id === $user->karyawan_id;
+        $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        // Configuration is an administrative mode for a participant opened
+        // from KPI-Karyawan. A Super Admin's own record remains an employee
+        // form so manager-level Super Admins can still complete their KPI.
+        $isConfigurator = $isSuperAdmin && ! $isSelf;
 
         if ($request->isMethod('post')) {
-            abort_unless($isSelf || $isSuperAdmin, 403, 'Anda tidak memiliki hak akses untuk mengisi/mengubah Kinerja OPS peserta ini.');
+            if ($isConfigurator) {
+                $v = $request->validate([
+                    'mode' => 'required|in:configure',
+                    'items' => 'present|array',
+                    'items.*.id' => 'nullable|integer',
+                    'items.*.kpi_item' => 'required|string|max:255',
+                    'items.*.maintenance' => 'nullable|string|max:1000',
+                    'items.*.target_unit' => 'required|integer|min:1',
+                    'items.*.tanda' => 'nullable|string|max:10',
+                    'items.*.frekuensi' => 'nullable|string|max:100',
+                    'items.*.hasil' => 'prohibited',
+                    'items.*.aktivitas' => 'prohibited',
+                    'items.*.bukti_evidence' => 'prohibited',
+                    'items.*.bukti_path' => 'prohibited',
+                ]);
+
+                abort_if(
+                    $items->contains(fn (KpiOpsItem $item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed', 'not_filled'], true))
+                        || KpiSignature::where('signable_type', KpiParticipant::class)
+                            ->where('signable_id', $participant->id)
+                            ->exists(),
+                    422,
+                    'Parameter Kinerja OPS sudah terkunci karena proses pengisian atau tanda tangan telah dimulai.'
+                );
+
+                $submittedIds = collect($v['items'])->pluck('id')->filter()->map(fn ($id) => (int) $id)->values();
+                $knownIds = $items->pluck('id')->map(fn ($id) => (int) $id);
+                abort_unless($submittedIds->diff($knownIds)->isEmpty(), 422, 'Item parameter tidak valid untuk peserta ini.');
+
+                DB::transaction(function () use ($participant, $period, $items, $v) {
+                    $keepIds = $v['items'] ? collect($v['items'])->pluck('id')->filter()->map(fn ($id) => (int) $id) : collect();
+                    $items->filter(fn (KpiOpsItem $item) => ! $keepIds->contains((int) $item->id))->each->delete();
+
+                    foreach ($v['items'] as $index => $itemData) {
+                        $item = ! empty($itemData['id'])
+                            ? $items->firstWhere('id', (int) $itemData['id'])
+                            : new KpiOpsItem(['kpi_participant_id' => $participant->id]);
+
+                        abort_unless($item, 422, 'Item parameter tidak ditemukan.');
+                        $item->fill([
+                            'kpi_participant_id' => $participant->id,
+                            'urutan' => $index + 1,
+                            'kpi_item' => $itemData['kpi_item'],
+                            'maintenance' => $itemData['maintenance'] ?? null,
+                            'target_unit' => (float) $itemData['target_unit'],
+                            'tanda' => $itemData['tanda'] ?? null,
+                            'frekuensi' => $itemData['frekuensi'] ?? null,
+                            'sumber_data_snapshot' => $participant->jabatan_snapshot,
+                            'target_bulanan' => (float) $itemData['target_unit'],
+                            'bulan' => $period->bulan,
+                            'beban_target' => 0,
+                        ]);
+                        $item->save();
+                    }
+
+                    $configuredItems = KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
+                    $totalTargetUnit = $configuredItems->sum(fn (KpiOpsItem $item) => (float) $item->target_unit);
+                    foreach ($configuredItems as $item) {
+                        $item->update([
+                            'beban_target' => $totalTargetUnit > 0
+                                ? round(((float) $item->target_unit / $totalTargetUnit) * 10, 4)
+                                : 0,
+                        ]);
+                    }
+                });
+
+                return back()->with('success', 'Parameter Kinerja OPS berhasil disimpan.');
+            }
+
+            abort_unless($isSelf, 403, 'Kinerja OPS hanya dapat diisi oleh pemilik laporan.');
             abort_unless($isWindowAllowed, 422, 'Pengisian Kinerja OPS hanya diizinkan pada tanggal 1–2 bulan berikutnya.');
-            abort_if($items->contains(fn ($item) => in_array($item->status, ['approved', 'locked', 'auto_signed', 'not_filled'], true)), 422, 'Kinerja OPS ini sudah dikirim atau dikunci.');
+            abort_if(
+                $items->contains(fn ($item) => in_array($item->status, ['locked', 'auto_signed', 'not_filled'], true))
+                    || KpiSignature::where('signable_type', KpiParticipant::class)
+                        ->where('signable_id', $participant->id)
+                        ->exists(),
+                422,
+                'Kinerja OPS ini sudah dikirim atau memiliki tanda tangan sehingga tidak dapat diubah.'
+            );
 
             $v = $request->validate([
+                'mode' => 'required|in:employee',
                 'items' => 'required|array|min:1',
-                'items.*.id' => 'nullable|integer',
-                'items.*.kpi_item' => 'nullable|string|max:255',
-                'items.*.maintenance' => 'nullable|string|max:255',
-                'items.*.target_unit' => 'nullable|numeric|min:0.0001',
-                'items.*.tanda' => 'nullable|string|max:10',
-                'items.*.frekuensi' => 'nullable|string|max:100',
+                'items.*.id' => 'required|integer',
                 'items.*.hasil' => 'nullable|numeric|min:0',
                 'items.*.aktivitas' => 'nullable|string|max:1000',
                 'items.*.bukti_evidence' => 'nullable|file|image|max:5120',
-                'items.*.existing_bukti' => 'nullable|string',
+                'items.*.remove_bukti' => 'nullable|boolean',
             ]);
 
-            $totalTargetUnit = collect($v['items'])->sum(fn ($i) => (float) $i['target_unit']);
+            $submittedIds = collect($v['items'])->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
+            $currentIds = $items->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
+            abort_unless($submittedIds->all() === $currentIds->all(), 422, 'Struktur parameter Kinerja OPS tidak valid.');
+
+            $totalTargetUnit = $items->sum(fn (KpiOpsItem $item) => (float) $item->target_unit);
             abort_if($totalTargetUnit <= 0, 422, 'Total Target Unit harus lebih dari 0.');
 
-            DB::transaction(function () use ($participant, $v, $totalTargetUnit, $request, $isSuperAdmin) {
-                $existingIds = collect($v['items'])->pluck('id')->filter();
-                KpiOpsItem::where('kpi_participant_id', $participant->id)
-                    ->whereNotIn('id', $existingIds)
-                    ->delete();
-
+            DB::transaction(function () use ($participant, $items, $v, $totalTargetUnit, $request) {
                 foreach ($v['items'] as $index => $itemData) {
-                    $existing = !empty($itemData['id'])
-                        ? KpiOpsItem::where('kpi_participant_id', $participant->id)->find($itemData['id'])
-                        : null;
-                    if (!$isSuperAdmin && $existing) {
-                        $itemData['kpi_item'] = $existing->kpi_item;
-                        $itemData['maintenance'] = $existing->maintenance;
-                        $itemData['target_unit'] = $existing->target_unit;
-                        $itemData['tanda'] = $existing->tanda;
-                        $itemData['frekuensi'] = $existing->frekuensi;
-                    }
-                    $target = (float) $itemData['target_unit'];
+                    $existing = $items->firstWhere('id', (int) $itemData['id']);
+                    abort_unless($existing, 422, 'Item Kinerja OPS tidak ditemukan pada peserta ini.');
+                    $target = (float) $existing->target_unit;
                     $hasil = isset($itemData['hasil']) && $itemData['hasil'] !== '' && $itemData['hasil'] !== null ? (float) $itemData['hasil'] : null;
 
                     $bebanTarget = round(($target / $totalTargetUnit) * 10, 4);
@@ -628,38 +720,27 @@ class KpiController extends Controller
                         $nilaiItem = round(($hasil / $target) * $bebanTarget, 4);
                     }
 
-                    $buktiPath = $itemData['existing_bukti'] ?? null;
+                    $buktiPath = $existing->bukti_path;
                     if ($request->hasFile("items.{$index}.bukti_evidence")) {
                         $file = $request->file("items.{$index}.bukti_evidence");
                         $storedPath = $file->store('kpi/ops-evidence', 'public');
                         $buktiPath = $storedPath;
+                    } elseif ((bool) ($itemData['remove_bukti'] ?? false)) {
+                        $buktiPath = null;
                     }
 
-                    KpiOpsItem::updateOrCreate(
-                        [
-                            'id' => $itemData['id'] ?? null,
-                            'kpi_participant_id' => $participant->id,
-                        ],
-                        [
-                            'urutan' => $index + 1,
-                            'kpi_item' => $itemData['kpi_item'],
-                            'maintenance' => $itemData['maintenance'] ?? null,
-                            'target_unit' => $target,
-                            'tanda' => $itemData['tanda'] ?? '+',
-                            'beban_target' => $bebanTarget,
-                            'sumber_data_snapshot' => $participant->jabatan_snapshot,
-                            'frekuensi' => $itemData['frekuensi'] ?? null,
-                            'hasil' => $hasil,
-                            'aktivitas' => $itemData['aktivitas'] ?? null,
-                            'bukti_path' => $buktiPath,
-                            'nilai_item' => $nilaiItem,
-                            'target_bulanan' => $target,
-                            'bulan' => $participant->period?->bulan,
-                            'status' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? 'draft' : 'submitted',
-                            'submit_type' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? null : 'manual',
-                            'submitted_at' => ($hasil === null && empty($itemData['aktivitas']) && !$buktiPath) ? null : now('Asia/Jakarta'),
-                        ]
-                    );
+                    $hasContent = $hasil !== null || trim((string) ($itemData['aktivitas'] ?? '')) !== '' || $buktiPath !== null;
+                    $existing->update([
+                        // Parameter/snapshot columns intentionally remain unchanged here.
+                        'beban_target' => $bebanTarget,
+                        'hasil' => $hasil,
+                        'aktivitas' => $itemData['aktivitas'] ?? null,
+                        'bukti_path' => $buktiPath,
+                        'nilai_item' => $nilaiItem,
+                        'status' => $hasContent ? 'submitted' : 'draft',
+                        'submit_type' => $hasContent ? 'manual' : null,
+                        'submitted_at' => $hasContent ? KpiClock::now() : null,
+                    ]);
                 }
             });
 
@@ -692,7 +773,9 @@ class KpiController extends Controller
             'totalKops' => $totalKops,
             'totalBebanTarget' => $totalBebanTarget,
             'isWindowAllowed' => $isWindowAllowed,
+            'windowState' => $windowState,
             'isOwner' => (int) $participant->karyawan_id === (int) $user->karyawan_id,
+            'isConfigurator' => $isConfigurator,
             'signatures' => $signatures,
             'canSignEmployee' => $hasSubmittedItems && (int) $participant->karyawan_id === (int) $user->karyawan_id && ! $signatures->has('employee'),
             'canSignSupervisor' => $hasSubmittedItems && (int) $participant->atasan_langsung_id === (int) $user->karyawan_id && ! $signatures->has('atasan_langsung'),
@@ -712,7 +795,7 @@ class KpiController extends Controller
         abort_unless($user->role()->value('nama_role') === 'super_admin', 403, 'Hanya Super Admin yang berwenang menetapkan Evaluator MPA.');
 
         // Deadline check: End of performance month 23:59:59 Asia/Jakarta
-        $now = now('Asia/Jakarta');
+        $now = KpiClock::now();
         $assignmentDeadline = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->endOfMonth()->endOfDay();
 
         abort_unless($now->lte($assignmentDeadline), 422, 'Batas waktu penetapan evaluator MPA periode ini sudah lewat.');
@@ -739,7 +822,7 @@ class KpiController extends Controller
         DB::transaction(function () use ($period, $evaluatorUser) {
             $period->update([
                 'mpa_evaluator_id' => $evaluatorUser->id,
-                'mpa_assigned_at' => now('Asia/Jakarta'),
+                'mpa_assigned_at' => KpiClock::now(),
             ]);
 
             // Synchronize mpa_evaluator_id across all participant monthly records for this period
@@ -768,7 +851,7 @@ class KpiController extends Controller
         $isAssignedEvaluator = $period->mpa_evaluator_id === $user->id;
 
         // Normal Evaluator Window Check: Days 1-5 of the month following performance month
-        $now = now('Asia/Jakarta');
+        $now = KpiClock::now();
         $perfMonth = $period->bulan;
         $perfYear = $period->tahun;
         $windowStart = Carbon::create($perfYear, $perfMonth, 1, 0, 0, 0, 'Asia/Jakarta')->addMonth()->startOfDay(); // Day 1 00:00
@@ -776,10 +859,21 @@ class KpiController extends Controller
 
         $isWindowOpen = $now->betweenIncluded($windowStart, $windowEnd);
         $isBlocked = ! $period->mpa_evaluator_id && $now->gt($windowStart);
+        $assignmentDeadline = Carbon::create($perfYear, $perfMonth, 1, 0, 0, 0, 'Asia/Jakarta')->endOfMonth()->endOfDay();
+        $assignmentLocked = $now->gt($assignmentDeadline);
+        $isFormView = $request->filled('karyawan_id');
 
-        // Fetch target participant if provided in request, else default first eligible
+        // Normal evaluator list excludes Dirut/Direktur and the evaluator's own
+        // participant. HRD/Super Admin can access the full administrative list.
         $targetKaryawanId = $request->input('karyawan_id');
         $participants = $period->participants()->with(['karyawan', 'karyawan.bawahan'])->get();
+        $eligibleParticipants = $participants->filter(function (KpiParticipant $participant) use ($user, $isHrdOrDirektur) {
+            $jabatan = mb_strtolower($participant->jabatan_snapshot ?? '');
+            if (! $isHrdOrDirektur && $this->isExcludedKpiPosition($jabatan)) {
+                return false;
+            }
+            return $isHrdOrDirektur || (int) $participant->karyawan_id !== (int) $user->karyawan_id;
+        })->values();
 
         // Eligible candidates for evaluator assignment dropdown (Super Admin view)
         $eligibleEvaluators = User::with(['karyawan.jabatan'])
@@ -793,16 +887,23 @@ class KpiController extends Controller
                 if ($this->isExcludedKpiPosition($jab)) return false;
                 return KpiParticipant::where('kpi_period_id', $period->id)->where('karyawan_id', $u->karyawan_id)->exists();
             })
+            ->map(fn (User $evaluator) => [
+                'id' => $evaluator->id,
+                'karyawan_id' => $evaluator->karyawan_id,
+                'name' => $evaluator->karyawan?->nama,
+                'position' => $evaluator->karyawan?->jabatan?->nama_jabatan,
+            ])
+            ->filter(fn (array $evaluator) => filled($evaluator['name']))
             ->values();
 
         // Selected participant for assessment
         $selectedParticipant = null;
         if ($targetKaryawanId) {
-            $selectedParticipant = $participants->firstWhere('karyawan_id', (int) $targetKaryawanId);
+            $selectedParticipant = $eligibleParticipants->firstWhere('karyawan_id', (int) $targetKaryawanId);
+            abort_unless($selectedParticipant, 403, 'Karyawan tersebut tidak tersedia pada daftar penilaian MPA Anda.');
         }
         if (! $selectedParticipant) {
-            // Default to first participant that is not self
-            $selectedParticipant = $participants->first(fn ($p) => $p->karyawan_id !== $user->karyawan_id) ?? $participants->first();
+            $selectedParticipant = $eligibleParticipants->first();
         }
 
         // Fetch existing monthly record for selected participant
@@ -812,6 +913,7 @@ class KpiController extends Controller
                 ['kpi_participant_id' => $selectedParticipant->id],
                 ['evaluator_id' => $period->mpa_evaluator_id]
             );
+            $monthly->load(['attendanceAdjustments', 'rewardPunishments']);
         }
 
         // Leadership eligibility check: based on snapshot or subordinate count in snapshot
@@ -830,30 +932,76 @@ class KpiController extends Controller
             abort_unless($isWindowOpen || $isHrdOrDirektur, 422, 'Pengisian MPA oleh evaluator reguler hanya dibuka pada tanggal 1–5 bulan berikutnya.');
             abort_if($monthly && $monthly->status === 'completed' && (! $isHrdOrDirektur || ($monthly->takeover_by && $monthly->takeover_by !== $user->id)), 422, 'Penilaian MPA yang sudah completed tidak dapat diubah secara normal.');
 
+            // Assigned evaluators may only save progress. Finalization is an
+            // administrative action reserved for Super Admin/HRD.
+            $action = $request->input('action', 'draft');
+            abort_unless(in_array($action, ['draft', 'complete'], true), 422, 'Aksi MPA tidak valid.');
+            abort_unless($action === 'draft' || $isHrdOrDirektur, 403, 'Hanya Super Admin/HRD yang dapat menyelesaikan penilaian MPA.');
+            if ($action === 'complete' && is_null($monthly->completed_at)) {
+                abort_unless($request->boolean('confirm_hrd'), 422, 'Konfirmasi diperlukan karena data HRD belum diisi atau memang tidak diperlukan.');
+            }
+            // Leadership is not an applicable dimension for a participant
+            // without snapshot subordinates. Normalize any stale frontend
+            // value so it can never block saving that participant.
+            if (! $hasSubordinatesSnapshot) {
+                $request->merge(['kepemimpinan' => null]);
+            }
+            $required = $action === 'complete' ? 'required' : 'nullable';
             $v = $request->validate([
-                'kinerja_operasional' => 'required|numeric|min:1|max:45',
-                'sikap_kerja' => 'required|numeric|min:1|max:45',
-                'team_work' => 'required|numeric|min:1|max:45',
-                'inisiatif' => 'required|numeric|min:1|max:45',
-                'kepemimpinan' => $hasSubordinatesSnapshot ? 'required|numeric|min:1|max:45' : 'nullable|numeric|min:1|max:45',
+                'action' => 'nullable|string|in:draft,complete',
+                'confirm_hrd' => 'nullable|boolean',
+                'kinerja_operasional' => $required.'|integer|min:1|max:45',
+                'sikap_kerja' => $required.'|integer|min:1|max:45',
+                'team_work' => $required.'|integer|min:1|max:45',
+                'inisiatif' => $required.'|integer|min:1|max:45',
+                'kepemimpinan' => $hasSubordinatesSnapshot ? $required.'|integer|min:1|max:45' : 'nullable|integer|min:1|max:45',
+                // Sections 5 and 6 are required before even a draft can be
+                // stored, so evaluators cannot leave the narrative sections
+                // empty while progressing the same record.
                 'performance' => 'required|string|max:2000',
                 'coaching' => 'required|string|max:2000',
-                'takeover_reason' => (! $isAssignedEvaluator && $isHrdOrDirektur && ! $monthly->takeover_by) ? 'required|string|max:500' : 'nullable|string|max:500',
+                'takeover_reason' => ($action === 'complete' && ! $isAssignedEvaluator && $isHrdOrDirektur && ! $monthly->takeover_by) ? 'required|string|max:500' : 'nullable|string|max:500',
+            ], [
+                'kinerja_operasional.required' => 'Nilai Kinerja Operasional wajib diisi.',
+                'kinerja_operasional.integer' => 'Nilai Kinerja Operasional harus berupa angka bulat.',
+                'kinerja_operasional.min' => 'Nilai Kinerja Operasional minimal 1.',
+                'kinerja_operasional.max' => 'Nilai Kinerja Operasional maksimal 45.',
+                'sikap_kerja.required' => 'Nilai Sikap Kerja wajib diisi.',
+                'sikap_kerja.integer' => 'Nilai Sikap Kerja harus berupa angka bulat.',
+                'sikap_kerja.min' => 'Nilai Sikap Kerja minimal 1.',
+                'sikap_kerja.max' => 'Nilai Sikap Kerja maksimal 45.',
+                'team_work.required' => 'Nilai Team Work wajib diisi.',
+                'team_work.integer' => 'Nilai Team Work harus berupa angka bulat.',
+                'team_work.min' => 'Nilai Team Work minimal 1.',
+                'team_work.max' => 'Nilai Team Work maksimal 45.',
+                'inisiatif.required' => 'Nilai Inisiatif wajib diisi.',
+                'inisiatif.integer' => 'Nilai Inisiatif harus berupa angka bulat.',
+                'inisiatif.min' => 'Nilai Inisiatif minimal 1.',
+                'inisiatif.max' => 'Nilai Inisiatif maksimal 45.',
+                'kepemimpinan.required' => 'Nilai Kepemimpinan wajib diisi.',
+                'kepemimpinan.integer' => 'Nilai Kepemimpinan harus berupa angka bulat.',
+                'kepemimpinan.min' => 'Nilai Kepemimpinan minimal 1.',
+                'kepemimpinan.max' => 'Nilai Kepemimpinan maksimal 45.',
+                'performance.required' => 'Penjelasan Performance wajib diisi.',
+                'performance.string' => 'Penjelasan Performance harus berupa teks.',
+                'coaching.required' => 'Rencana Perbaikan/Coaching wajib diisi.',
+                'coaching.string' => 'Rencana Perbaikan/Coaching harus berupa teks.',
+                'takeover_reason.required' => 'Alasan pengambilalihan HRD wajib diisi.',
             ]);
 
-            $ko = (float) $v['kinerja_operasional'];
-            $sk = (float) $v['sikap_kerja'];
-            $tw = (float) $v['team_work'];
-            $in = (float) $v['inisiatif'];
-            $kp = $hasSubordinatesSnapshot ? (float) ($v['kepemimpinan'] ?? 0) : 0;
+            $ko = isset($v['kinerja_operasional']) ? (int) $v['kinerja_operasional'] : null;
+            $sk = isset($v['sikap_kerja']) ? (int) $v['sikap_kerja'] : null;
+            $tw = isset($v['team_work']) ? (int) $v['team_work'] : null;
+            $in = isset($v['inisiatif']) ? (int) $v['inisiatif'] : null;
+            $kp = $hasSubordinatesSnapshot && isset($v['kepemimpinan']) ? (int) $v['kepemimpinan'] : null;
 
             // Intermediate calculation (min 4 decimal places)
             // If no leadership: score = ((KO + Sikap + Team + Inisiatif) / 4) / 45 * 5
             // If has leadership: score = ((KO + Sikap + Team + Inisiatif + Kepemimpinan) / 5) / 45 * 5
-            $sum = $ko + $sk + $tw + $in + ($hasSubordinatesSnapshot ? $kp : 0);
+            $sum = ($ko ?? 0) + ($sk ?? 0) + ($tw ?? 0) + ($in ?? 0) + ($hasSubordinatesSnapshot ? ($kp ?? 0) : 0);
             $countComponents = $hasSubordinatesSnapshot ? 5 : 4;
             $avgRating = $sum / $countComponents; // out of 45
-            $mpaScoreRaw = ($avgRating / 45) * 5;
+            $mpaScoreRaw = $action === 'complete' ? (($avgRating / 45) * 5) : 0;
 
             // Final component 2 decimal
             $mpaScoreFinal = round($mpaScoreRaw, 2);
@@ -867,51 +1015,104 @@ class KpiController extends Controller
                 'mpa_score' => $mpaScoreFinal,
                 'performance' => $v['performance'] ?? null,
                 'coaching' => $v['coaching'] ?? null,
-                'status' => 'completed',
+                'status' => $action === 'complete' ? 'completed' : 'draft',
             ];
+            if ($action === 'complete') {
+                $updateData['completed_at'] = KpiClock::now();
+                $updateData['completed_by'] = $user->id;
+            }
 
             // If takeover by HRD
             if (! $isAssignedEvaluator && $isHrdOrDirektur && ! $monthly->takeover_by) {
                 $updateData['takeover_by'] = $user->id;
-                $updateData['takeover_at'] = now('Asia/Jakarta');
+                $updateData['takeover_at'] = KpiClock::now();
                 $updateData['takeover_reason'] = $v['takeover_reason'] ?? 'HRD Takeover completing unfulfilled MPA assessment';
             }
 
             $monthly->update($updateData);
 
-            return back()->with('success', 'Penilaian MPA berhasil disimpan.');
+            if ($action === 'complete') {
+                // Finalizing MPA records the HRD signature exactly once. This
+                // is an effect of the finalization action, not the day-9
+                // deadline auto-sign process.
+                KpiSignature::firstOrCreate(
+                    [
+                        'signable_type' => KpiMonthly::class,
+                        'signable_id' => $monthly->id,
+                        'role' => 'hrd_publish',
+                    ],
+                    [
+                        'source' => 'automatic',
+                        'signed_for_user_id' => $monthly->participant?->karyawan_id,
+                        'signed_by_user_id' => $user->id,
+                        'signed_at' => KpiClock::now(),
+                        'reason' => 'MPA finalized by HRD',
+                    ]
+                );
+            }
+
+            return back()->with('success', $action === 'complete' ? 'Penilaian MPA berhasil diselesaikan.' : 'Draft MPA berhasil disimpan.');
         }
 
         // Map participants summary for MPA list view
-        $participantList = $participants->map(function ($p) use ($user) {
+        $participantList = $eligibleParticipants->map(function ($p) use ($user) {
             $m = KpiMonthly::where('kpi_participant_id', $p->id)->first();
+            // A completed record must remain visibly completed even when it
+            // was filled through an earlier HRD takeover.
+            $status = in_array($m?->status, ['completed', 'published'], true)
+                ? $m->status
+                : ($m?->takeover_by ? 'takeover' : ($m?->status ?? 'scheduled'));
             return [
                 'id' => $p->id,
                 'karyawan_id' => $p->karyawan_id,
                 'nama' => $p->karyawan?->nama ?? 'Karyawan',
                 'jabatan' => $p->jabatan_snapshot,
                 'departemen' => $p->departemen_snapshot,
-                'status' => $m?->status ?? 'scheduled',
+                'status' => $status,
                 'mpa_score' => $m?->mpa_score ?? 0,
                 'is_self' => $p->karyawan_id === $user->karyawan_id,
                 'is_takeover' => (bool) $m?->takeover_by,
             ];
         });
+        $summary = [
+            'total' => $participantList->count(),
+            'completed' => $participantList->whereIn('status', ['completed', 'published'])->count(),
+            'pending' => $participantList->whereIn('status', ['scheduled', 'draft'])->count(),
+            'hrd' => $participantList->whereIn('status', ['takeover', 'HRD_INCOMPLETE'])->count(),
+        ];
 
         return inertia('Internal/Kpi/MPA', [
             'user' => $this->userPayload($request),
             'period' => $period,
             'eligibleEvaluators' => $eligibleEvaluators,
             'assignedEvaluatorId' => $period->mpa_evaluator_id,
-            'assignedEvaluatorName' => User::find($period->mpa_evaluator_id)?->name ?? 'Belum Ditentukan',
+            'assignedEvaluatorName' => User::with('karyawan')->find($period->mpa_evaluator_id)?->karyawan?->nama ?? 'Belum Ditentukan',
             'isAssignedEvaluator' => $isAssignedEvaluator,
             'isWindowOpen' => $isWindowOpen,
             'isBlocked' => $isBlocked,
+            'assignmentLocked' => $assignmentLocked,
+            'isFormView' => $isFormView,
+            'isHrdOrDirektur' => $isHrdOrDirektur,
             'participants' => $participantList,
             'selectedParticipant' => $selectedParticipant,
             'hasSubordinatesSnapshot' => $hasSubordinatesSnapshot,
             'isRatingSelf' => $isRatingSelf,
             'monthly' => $monthly,
+            'hrdData' => [
+                'attendance' => $monthly?->attendanceAdjustments?->map(fn ($item) => [
+                    'kode' => $item->kode,
+                    'jumlah' => $item->jumlah,
+                    'nilai' => $item->nilai,
+                ])->values() ?? [],
+                'rewards' => $monthly?->rewardPunishments?->map(fn ($item) => [
+                    'jenis' => $item->jenis,
+                    'jumlah' => $item->jumlah,
+                    'nilai' => $item->nilai,
+                ])->values() ?? [],
+                'attendance_score' => $monthly?->attendance_score,
+                'reward_punishment_score' => $monthly?->reward_punishment_score,
+            ],
+            'summary' => $summary,
         ]);
     }
 
@@ -932,7 +1133,7 @@ class KpiController extends Controller
 
         $monthly->update([
             'takeover_by' => $user->id,
-            'takeover_at' => now('Asia/Jakarta'),
+            'takeover_at' => KpiClock::now(),
             'takeover_reason' => $v['takeover_reason'],
         ]);
 
@@ -947,11 +1148,106 @@ class KpiController extends Controller
         $user = $request->user();
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isHrdOrDirektur = $isSuperAdmin || in_array(mb_strtolower($user->karyawan?->jabatan?->nama_jabatan ?? ''), ['direktur', 'hrd', 'dirut']);
+        $useHrdWorkspace = $request->input('mode') === 'hrd';
+        $targetParticipant = $request->filled('karyawan_id')
+            ? $this->getParticipantOrTarget($request, $period)
+            : null;
+        // Monthly Individu is the default route for every account, including
+        // Super Admin. The HRD/MPA workspace is opt-in via mode=hrd.
+        if (! $useHrdWorkspace && ! $targetParticipant) {
+            $targetParticipant = KpiParticipant::where('kpi_period_id', $period->id)
+                ->where('karyawan_id', $user->karyawan_id)
+                ->firstOrFail();
+        }
 
-        abort_unless($isHrdOrDirektur, 403, 'Hanya Direktur / HRD yang berwenang mengelola komponen Monthly Attendance & Reward/Punishment.');
+        // Monthly Individu is a read-only result view. The period-wide HRD
+        // workspace remains available explicitly through mode=hrd.
+        if ($targetParticipant) {
+            $targetParticipant->load(['karyawan.user', 'karyawan.jabatan', 'karyawan.departemen', 'atasanLangsung', 'atasanKedua']);
+            $monthly = KpiMonthly::with(['attendanceAdjustments', 'rewardPunishments'])
+                ->firstOrCreate(['kpi_participant_id' => $targetParticipant->id]);
 
-        $monthlies = KpiMonthly::with(['participant.karyawan', 'attendanceAdjustments', 'rewardPunishments'])
-            ->whereHas('participant', fn ($q) => $q->where('kpi_period_id', $period->id))
+            $signatures = KpiSignature::where('signable_type', KpiMonthly::class)
+                ->where('signable_id', $monthly->id)
+                ->whereIn('role', ['hrd_publish', 'employee', 'atasan_langsung', 'atasan_kedua'])
+                ->get()
+                ->keyBy('role')
+                ->map(fn (KpiSignature $signature) => [
+                    'source' => $signature->source,
+                    'signed_at' => $signature->signed_at?->timezone('Asia/Jakarta')->format('d/m/Y H:i'),
+                    'signature_url' => $signature->source === 'manual' && $signature->signature_path
+                        ? Storage::disk('public')->url($signature->signature_path)
+                        : null,
+                    'reason' => $signature->reason,
+                ]);
+
+            $isOwner = (int) $targetParticipant->karyawan_id === (int) $user->karyawan_id;
+            $isMonitoring = ! $isOwner;
+
+            return inertia('Internal/Kpi/Monthly', [
+                'user' => $this->userPayload($request),
+                'period' => $period,
+                'viewMode' => 'result',
+                'participant' => $targetParticipant,
+                'employeeHeader' => [
+                    'nama' => $targetParticipant->karyawan?->nama ?? '-',
+                    'nik' => $targetParticipant->karyawan?->nik ?? '-',
+                    'perusahaan' => 'Kampoeng Radja',
+                    'jabatan' => $targetParticipant->jabatan_snapshot ?? '-',
+                    'departemen' => $targetParticipant->departemen_snapshot ?? '-',
+                    'penempatan' => $targetParticipant->penempatan_snapshot ?? '-',
+                    'atasan_langsung' => $targetParticipant->atasan_langsung_snapshot ?? '-',
+                ],
+                'monthlyDetail' => [
+                    'id' => $monthly->id,
+                    'status' => $monthly->status,
+                    'kinerja_operasional' => $monthly->kinerja_operasional,
+                    'sikap_kerja' => $monthly->sikap_kerja,
+                    'team_work' => $monthly->team_work,
+                    'inisiatif' => $monthly->inisiatif,
+                    'kepemimpinan' => $monthly->kepemimpinan,
+                    'mpa_score' => $monthly->mpa_score,
+                    'performance' => $monthly->performance,
+                    'coaching' => $monthly->coaching,
+                    'attendance_score' => $monthly->attendance_score,
+                    'reward_punishment_score' => $monthly->reward_punishment_score,
+                    'adjustments' => $monthly->attendanceAdjustments,
+                    'rewards' => $monthly->rewardPunishments,
+                    'published_at' => $monthly->published_at?->timezone('Asia/Jakarta')->format('d/m/Y H:i'),
+                ],
+                'signatures' => $signatures,
+                'isOwner' => $isOwner,
+                'isMonitoring' => $isMonitoring,
+                'monitoringEmployeeId' => $isMonitoring ? $targetParticipant->karyawan_id : null,
+                'hasLeadershipDimension' => KpiParticipant::where('kpi_period_id', $period->id)
+                    ->where('atasan_langsung_id', $targetParticipant->karyawan_id)
+                    ->exists(),
+                'canSignEmployee' => in_array($monthly->status, ['completed', 'published'], true) && $signatures->has('hrd_publish') && $isOwner && ! $signatures->has('employee'),
+                'canSignSupervisor' => in_array($monthly->status, ['completed', 'published'], true) && $signatures->has('hrd_publish')
+                    && (int) $targetParticipant->atasan_langsung_id === (int) $user->karyawan_id
+                    && ! $signatures->has('atasan_langsung'),
+                'canSignSecondSupervisor' => in_array($monthly->status, ['completed', 'published'], true) && $signatures->has('hrd_publish')
+                    && $targetParticipant->atasan_kedua_id
+                    && (int) $targetParticipant->atasan_kedua_id === (int) $user->karyawan_id
+                    && ! $signatures->has('atasan_kedua'),
+            ]);
+        }
+
+        abort_unless($isHrdOrDirektur, 403, 'Anda tidak berwenang membuka workspace Monthly HRD.');
+
+        // Keep one Monthly/MPA record per participant so the HRD workspace and
+        // the employee result page always address the same row.
+        $period->participants()->get()->each(fn (KpiParticipant $participant) =>
+            KpiMonthly::firstOrCreate(
+                ['kpi_participant_id' => $participant->id],
+                ['evaluator_id' => $period->mpa_evaluator_id]
+            )
+        );
+
+        $monthlyQuery = KpiMonthly::with(['participant.karyawan', 'attendanceAdjustments', 'rewardPunishments'])
+            ->whereHas('participant', fn ($q) => $q->where('kpi_period_id', $period->id));
+
+        $monthlies = $monthlyQuery
             ->get()
             ->map(function ($m) {
                 return [
@@ -966,18 +1262,21 @@ class KpiController extends Controller
                     'reward_punishment_score' => $m->reward_punishment_score,
                     'adjustments' => $m->attendanceAdjustments,
                     'rewards' => $m->rewardPunishments,
-                    'is_complete' => in_array($m->status, ['completed', 'published']),
+                    'is_complete' => in_array($m->status, ['completed', 'published'], true) && ! is_null($m->completed_at),
                 ];
             });
 
-        $now = now('Asia/Jakarta');
+        $now = KpiClock::now();
         $isPublishable = $monthlies->every(fn ($m) => $m['is_complete']);
 
         return inertia('Internal/Kpi/Monthly', [
             'user' => $this->userPayload($request),
             'period' => $period,
+            'viewMode' => 'hrd',
             'monthlies' => $monthlies,
             'isPublishable' => $isPublishable,
+            'isMonitoring' => false,
+            'monitoringEmployeeId' => null,
         ]);
     }
 
@@ -1004,6 +1303,13 @@ class KpiController extends Controller
         ]);
 
         $monthly = KpiMonthly::findOrFail($v['monthly_id']);
+        abort_unless((int) $monthly->participant?->kpi_period_id === (int) $period->id, 422, 'Record Monthly tidak berada pada periode ini.');
+        abort_if($monthly->status === 'published', 422, 'Monthly yang sudah dipublish tidak dapat diubah.');
+        abort_if(
+            KpiSignature::where('signable_type', KpiMonthly::class)->where('signable_id', $monthly->id)->exists(),
+            422,
+            'Monthly yang sudah memiliki tanda tangan tidak dapat diubah.'
+        );
 
         // Rates map per PRD: P1 = 0.5, DL = 0.3, PC = 0.3, LC = 0.3, M = 3
         $rateMap = [
@@ -1061,7 +1367,7 @@ class KpiController extends Controller
                 }
             }
 
-            $now = now('Asia/Jakarta');
+            $now = KpiClock::now();
             $isLate = $now->day > 8; // Normal monthly deadline is day 8
 
             $monthlyUpdate = [
@@ -1109,7 +1415,9 @@ class KpiController extends Controller
             }
 
             $hasMpa = ! is_null($m->mpa_score) && ! empty($m->performance) && ! empty($m->coaching);
-            $hasAttendance = ! is_null($m->attendance_score);
+            // `attendance_score` has a legacy default of zero; completed_at is
+            // the explicit marker that HRD actually saved the HRD component.
+            $hasAttendance = ! is_null($m->completed_at);
 
             if (! $hasMpa || ! $hasAttendance) {
                 $incompleteCount++;
@@ -1118,7 +1426,7 @@ class KpiController extends Controller
 
         abort_if($incompleteCount > 0, 422, "Gagal mem-publish! Terdapat {$incompleteCount} peserta yang belum lengkap penilaian MPA/Attendance-nya.");
 
-        $now = now('Asia/Jakarta');
+        $now = KpiClock::now();
         $isLatePublish = $now->day > 8; // Publish deadline is day 8
 
         DB::transaction(function () use ($monthlies, $period, $user, $now, $isLatePublish) {
@@ -1138,7 +1446,7 @@ class KpiController extends Controller
                         'role' => 'hrd_publish',
                     ],
                     [
-                        'source' => 'manual',
+                        'source' => 'automatic',
                         'signed_for_user_id' => $m->participant?->karyawan_id,
                         'signed_by_user_id' => $user->id,
                         'signed_at' => $now,
@@ -1199,9 +1507,18 @@ class KpiController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        $monitoringParticipant = $request->filled('karyawan_id')
+            ? $this->getParticipantOrTarget($request, $period)
+            : null;
+        $isMonitoring = $monitoringParticipant
+            && (int) $monitoringParticipant->karyawan_id !== (int) $user->karyawan_id;
 
-        $participants = $period->participants()->with(['karyawan', 'atasanLangsung'])->get();
-        $now = now('Asia/Jakarta');
+        $participantsQuery = $period->participants()->with(['karyawan', 'atasanLangsung']);
+        if ($isMonitoring) {
+            $participantsQuery->whereKey($monitoringParticipant->id);
+        }
+        $participants = $participantsQuery->get();
+        $now = KpiClock::now();
         $isLateFinalization = $now->day > 10;
 
         $finalScores = [];
@@ -1310,6 +1627,8 @@ class KpiController extends Controller
             'user' => $this->userPayload($request),
             'period' => $period,
             'scores' => $finalScores,
+            'isMonitoring' => (bool) $isMonitoring,
+            'monitoringEmployeeId' => $isMonitoring ? $monitoringParticipant->karyawan_id : null,
         ]);
     }
 
@@ -1322,7 +1641,7 @@ class KpiController extends Controller
         $v = $request->validate([
             'signable_type' => 'required|string|in:kinerja_individu,kinerja_ops,monthly,final_score',
             'signable_id' => 'required|integer',
-            'role' => 'required|string|in:employee,atasan_langsung,atasan_kedua,hrd',
+            'role' => 'nullable|string|in:employee,atasan_langsung,atasan_kedua,hrd',
         ]);
 
         $employee = $user->karyawan;
@@ -1351,16 +1670,57 @@ class KpiController extends Controller
                 abort_unless($user->karyawan_id === $participant->karyawan_id, 403, 'Anda bukan karyawan bersangkutan.');
             } elseif ($v['role'] === 'atasan_langsung') {
                 abort_unless($user->karyawan_id === $participant->atasan_langsung_id, 403, 'Anda bukan Atasan Langsung karyawan.');
+            } else {
+                abort(403, 'Peran ini tidak memiliki kewenangan menandatangani Kinerja OPS.');
             }
+
+            $opsItems = KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
+            abort_unless($opsItems->isNotEmpty(), 422, 'Kinerja OPS belum memiliki parameter.');
+            abort_unless(
+                $opsItems->every(fn (KpiOpsItem $item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed', 'not_filled'], true)),
+                422,
+                'Kinerja OPS belum dikirim lengkap oleh pemilik laporan.'
+            );
+            abort_if(
+                KpiSignature::where('signable_type', KpiParticipant::class)
+                    ->where('signable_id', $participant->id)
+                    ->where('role', $v['role'])
+                    ->exists(),
+                422,
+                'Tanda tangan untuk peran ini sudah tersimpan.'
+            );
         } elseif ($v['signable_type'] === 'monthly') {
             $participant = $record->participant;
+            abort_unless(in_array($record->status, ['completed', 'published'], true), 422, 'Monthly belum difinalisasi HRD dan belum dapat ditandatangani.');
+            abort_unless(KpiSignature::where('signable_type', KpiMonthly::class)->where('signable_id', $record->id)->where('role', 'hrd_publish')->exists(), 422, 'Tanda tangan HRD belum tercatat.');
+            // Role is derived from the period snapshot and authenticated
+            // employee. The client only sends a generic signature action.
+            if ((int) $user->karyawan_id === (int) $participant->karyawan_id) {
+                $v['role'] = 'employee';
+            } elseif ((int) $user->karyawan_id === (int) $participant->atasan_langsung_id) {
+                $v['role'] = 'atasan_langsung';
+            } elseif ($participant->atasan_kedua_id && (int) $user->karyawan_id === (int) $participant->atasan_kedua_id) {
+                $v['role'] = 'atasan_kedua';
+            } else {
+                abort(403, 'Anda bukan pihak yang berwenang menandatangani Monthly.');
+            }
             if ($v['role'] === 'employee') {
                 abort_unless($user->karyawan_id === $participant->karyawan_id, 403, 'Anda bukan karyawan bersangkutan.');
             } elseif ($v['role'] === 'atasan_langsung') {
                 abort_unless($user->karyawan_id === $participant->atasan_langsung_id, 403, 'Anda bukan Atasan Langsung karyawan.');
             } elseif ($v['role'] === 'atasan_kedua') {
                 abort_unless($participant->atasan_kedua_id && $user->karyawan_id === $participant->atasan_kedua_id, 403, 'Anda bukan Atasan Kedua karyawan.');
+            } else {
+                abort(403, 'Peran ini tidak memiliki kewenangan menandatangani Monthly secara manual.');
             }
+            abort_if(
+                KpiSignature::where('signable_type', KpiMonthly::class)
+                    ->where('signable_id', $record->id)
+                    ->where('role', $v['role'])
+                    ->exists(),
+                422,
+                'Tanda tangan Monthly untuk peran ini sudah tersimpan.'
+            );
         } elseif ($v['signable_type'] === 'final_score') {
             $participant = $record->participant;
             abort_unless($user->karyawan_id === $participant->atasan_langsung_id, 403, 'Hanya Atasan Langsung snapshot yang berwenang menandatangani Nilai Akhir.');
@@ -1373,10 +1733,21 @@ class KpiController extends Controller
             $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
             $signaturePath = 'kpi/individual-signatures/'.$record->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
             abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan gagal disimpan.');
+        } elseif ($v['signable_type'] === 'kinerja_ops') {
+            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
+            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Foto tanda tangan belum tersedia.');
+            $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
+            $signaturePath = 'kpi/ops-signatures/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan Kinerja OPS gagal disimpan.');
+        } elseif ($v['signable_type'] === 'monthly') {
+            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
+            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Foto tanda tangan belum tersedia.');
+            $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
+            $signaturePath = 'kpi/monthly-signatures/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan Monthly gagal disimpan.');
         }
 
-        // Idempotent signature creation/update
-        KpiSignature::updateOrCreate(
+        KpiSignature::firstOrCreate(
             [
                 'signable_type' => $modelClass,
                 'signable_id' => $record->id,
@@ -1387,13 +1758,21 @@ class KpiController extends Controller
                 'signed_for_user_id' => $v['signable_type'] === 'kinerja_individu' ? $participant->karyawan?->user?->id : $user->id,
                 'signed_by_user_id' => $user->id,
                 'signature_path' => $signaturePath,
-                'signed_at' => $v['signable_type'] === 'kinerja_individu' ? KpiClock::now() : now('Asia/Jakarta'),
+                'signed_at' => KpiClock::now(),
                 'reason' => 'Manual Signature',
             ]
         );
 
         if ($v['signable_type'] === 'kinerja_individu') {
             $record->update(['status' => 'approved']);
+        } elseif ($v['signable_type'] === 'kinerja_ops') {
+            $signaturesComplete = KpiSignature::where('signable_type', KpiParticipant::class)
+                ->where('signable_id', $participant->id)
+                ->whereIn('role', ['employee', 'atasan_langsung'])
+                ->count() >= 2;
+            if ($signaturesComplete) {
+                $opsItems->where('status', 'submitted')->each(fn (KpiOpsItem $item) => $item->update(['status' => 'locked']));
+            }
         }
 
         return back()->with('success', 'Tanda tangan berhasil disimpan.');
@@ -1662,7 +2041,7 @@ class KpiController extends Controller
                 $items[] = [
                     'type' => 'hrd_incomplete',
                     'message' => "Terdapat {$hrdIncomplete} Monthly HRD berstatus HRD_INCOMPLETE yang belum selesai.",
-                    'url' => route('dashboard.kpi.monthly', $activePeriod->id),
+                    'url' => route('dashboard.kpi.monthly', ['period' => $activePeriod->id, 'mode' => 'hrd']),
                 ];
             }
         }
@@ -1691,7 +2070,7 @@ class KpiController extends Controller
                 ->where('atasan_langsung_id', $karyawanId)
                 ->pluck('karyawan_id');
             $sp1Count = 0;
-            $nowDate = now('Asia/Jakarta');
+            $nowDate = KpiClock::now();
             foreach ($subordinateIds as $subId) {
                 if ($this->calculateMissingDailyCount($subId, $nowDate) >= 3) {
                     $sp1Count++;
@@ -1710,6 +2089,223 @@ class KpiController extends Controller
             'total' => count($items),
             'items' => $items,
         ]);
+    }
+
+    /**
+     * Build a read-only health snapshot for one KPI period. All organisation
+     * attributes come from the participant snapshot; this method never mutates
+     * workflow records.
+     */
+    private function periodMonitoringPayload(KpiPeriod $period, bool $withParticipants): array
+    {
+        $participants = $period->participants;
+        $total = $participants->count();
+        $configurationIssues = [];
+        $rows = [];
+        $kiComplete = 0;
+        $opsComplete = 0;
+        $mpaComplete = 0;
+        $monthlyReady = 0;
+        $signatureComplete = 0;
+        $hasMpaDraft = false;
+        $hasHrdIncomplete = false;
+
+        $missingSupervisor = $participants->whereNull('atasan_langsung_id')->count();
+        if ($missingSupervisor > 0) {
+            $configurationIssues[] = [
+                'type' => 'missing_supervisor',
+                'count' => $missingSupervisor,
+                'message' => "{$missingSupervisor} peserta belum memiliki Atasan Langsung pada snapshot periode.",
+            ];
+        }
+
+        $missingAccount = $participants->filter(function (KpiParticipant $participant): bool {
+            $account = $participant->karyawan?->user;
+
+            return ! $account || ! $account->is_active;
+        })->count();
+        if ($missingAccount > 0) {
+            $configurationIssues[] = [
+                'type' => 'inactive_account',
+                'count' => $missingAccount,
+                'message' => "{$missingAccount} peserta belum memiliki akun aktif.",
+            ];
+        }
+
+        foreach ($participants as $participant) {
+            $problems = [];
+            if (! $participant->atasan_langsung_id) {
+                $problems[] = 'Atasan Langsung belum tersedia';
+            }
+            if (! $participant->karyawan?->user || ! $participant->karyawan->user->is_active) {
+                $problems[] = 'Akun belum aktif';
+            }
+
+            $individual = $participant->individualScore;
+            $individualStatus = $individual?->status;
+            $individualLabel = match ($individualStatus) {
+                'approved', 'auto_signed', 'locked' => 'Selesai',
+                'submitted' => 'Menunggu TTD',
+                'not_filled' => 'Tidak Mengisi',
+                'draft' => 'Draft',
+                default => 'Belum',
+            };
+            if (in_array($individualStatus, ['approved', 'auto_signed', 'locked'], true)) {
+                $kiComplete++;
+            }
+
+            $opsItems = $participant->opsItems;
+            if ($opsItems->isEmpty()) {
+                $opsLabel = 'Parameter Belum Ditetapkan';
+            } else {
+                $opsStatuses = $opsItems->pluck('status');
+                $opsHasContent = $opsItems->contains(fn (KpiOpsItem $item) =>
+                    ! is_null($item->hasil) || filled($item->aktivitas) || filled($item->bukti_path)
+                );
+                $opsFinished = $opsStatuses->every(fn ($status) =>
+                    in_array($status, ['approved', 'auto_signed', 'locked'], true)
+                );
+
+                if ($opsFinished) {
+                    $opsLabel = 'Selesai';
+                    $opsComplete++;
+                } elseif ($opsStatuses->contains('not_filled')) {
+                    $opsLabel = 'Tidak Mengisi';
+                } elseif ($opsStatuses->contains('submitted')) {
+                    $opsLabel = 'Menunggu TTD';
+                } elseif ($opsHasContent) {
+                    $opsLabel = 'Draft';
+                } else {
+                    $opsLabel = 'Siap Diisi';
+                }
+            }
+
+            $monthly = $participant->monthly;
+            $monthlyStatus = $monthly?->status;
+            $hasMpaDraft = $hasMpaDraft || in_array($monthlyStatus, ['draft', 'scheduled'], true);
+            $hasHrdIncomplete = $hasHrdIncomplete || $monthlyStatus === 'HRD_INCOMPLETE';
+
+            $mpaLabel = match ($monthlyStatus) {
+                'published', 'completed' => 'Selesai',
+                'HRD_INCOMPLETE' => 'Menunggu HRD',
+                'draft' => $monthly?->takeover_by ? 'HRD Takeover' : 'Draft Penilai',
+                default => 'Belum Dinilai',
+            };
+            if (in_array($monthlyStatus, ['completed', 'published'], true)) {
+                $mpaComplete++;
+            }
+
+            $monthlyLabel = match ($monthlyStatus) {
+                'published' => 'Dipublish',
+                'completed' => 'Siap Dipublish',
+                'draft', 'HRD_INCOMPLETE' => 'Menunggu Finalisasi',
+                default => 'Belum Tersedia',
+            };
+            if (in_array($monthlyStatus, ['completed', 'published'], true)) {
+                $monthlyReady++;
+            }
+
+            $signatureLabel = 'Belum tersedia';
+            if ($monthly && in_array($monthlyStatus, ['completed', 'published'], true)) {
+                $requiredRoles = ['hrd_publish', 'employee', 'atasan_langsung'];
+                if ($participant->atasan_kedua_id) {
+                    $requiredRoles[] = 'atasan_kedua';
+                }
+                $signedRoles = $monthly->signatures->pluck('role')->unique();
+                $signedCount = collect($requiredRoles)->filter(fn ($role) => $signedRoles->contains($role))->count();
+                $signatureLabel = "{$signedCount} / ".count($requiredRoles);
+                if ($signedCount === count($requiredRoles)) {
+                    $signatureComplete++;
+                }
+            }
+
+            if ($withParticipants) {
+                $rows[] = [
+                    'id' => $participant->id,
+                    'karyawan_id' => $participant->karyawan_id,
+                    'nama' => $participant->karyawan?->nama ?? 'Karyawan',
+                    'jabatan' => $participant->jabatan_snapshot ?: '-',
+                    'departemen' => $participant->departemen_snapshot ?: '-',
+                    'penempatan' => $participant->penempatan_snapshot ?: '-',
+                    'individual_status' => $individualLabel,
+                    'ops_status' => $opsLabel,
+                    'mpa_status' => $mpaLabel,
+                    'monthly_status' => $monthlyLabel,
+                    'signature_status' => $signatureLabel,
+                    'problems' => $problems,
+                ];
+            }
+        }
+
+        $publishState = 'not_ready';
+        $publishLabel = 'Belum Siap';
+        if ($period->published_at || ($total > 0 && $monthlyReady === $total && $participants->every(fn ($participant) => $participant->monthly?->status === 'published'))) {
+            $publishState = 'published';
+            $publishLabel = 'Dipublish';
+        } elseif ($total > 0 && $monthlyReady === $total) {
+            $publishState = 'ready';
+            $publishLabel = 'Siap Dipublish';
+        }
+
+        $statusKey = 'active';
+        if ($total === 0 || $period->status === 'draft') {
+            $statusKey = 'draft';
+        }
+        if ($hasMpaDraft) {
+            $statusKey = 'waiting_mpa';
+        }
+        if ($hasHrdIncomplete) {
+            $statusKey = 'waiting_hrd';
+        }
+        if ($publishState === 'ready') {
+            $statusKey = 'ready_publish';
+        }
+        if ($publishState === 'published') {
+            $statusKey = $signatureComplete === $total && $total > 0 ? 'completed' : 'published';
+        }
+        if ($period->status === 'blocked') {
+            $statusKey = 'waiting_hrd';
+        }
+
+        $statusLabels = [
+            'draft' => 'Persiapan',
+            'active' => 'Dalam Proses',
+            'waiting_mpa' => 'Menunggu MPA',
+            'waiting_hrd' => 'Menunggu HRD',
+            'ready_publish' => 'Siap Dipublish',
+            'published' => 'Dipublish',
+            'completed' => 'Selesai',
+        ];
+        $percentage = fn (int $value): int => $total > 0 ? (int) round(($value / $total) * 100) : 0;
+
+        return [
+            'id' => $period->id,
+            'bulan' => $period->bulan,
+            'tahun' => $period->tahun,
+            'status_key' => $statusKey,
+            'status_label' => $statusLabels[$statusKey],
+            'evaluator_name' => $period->evaluator?->karyawan?->nama
+                ?? $period->evaluator?->name
+                ?? 'Belum ditetapkan',
+            'progress' => [
+                'participants' => ['complete' => $total, 'total' => $total, 'percentage' => $total > 0 ? 100 : 0],
+                'individual' => ['complete' => $kiComplete, 'total' => $total, 'percentage' => $percentage($kiComplete)],
+                'ops' => ['complete' => $opsComplete, 'total' => $total, 'percentage' => $percentage($opsComplete)],
+                'mpa' => ['complete' => $mpaComplete, 'total' => $total, 'percentage' => $percentage($mpaComplete)],
+                'monthly' => ['complete' => $monthlyReady, 'total' => $total, 'percentage' => $percentage($monthlyReady)],
+                'signature' => ['complete' => $signatureComplete, 'total' => $total, 'percentage' => $percentage($signatureComplete)],
+            ],
+            'configuration_errors' => collect($configurationIssues)->sum('count'),
+            'configuration_issues' => $configurationIssues,
+            'publish' => [
+                'state' => $publishState,
+                'label' => $publishLabel,
+                'ready' => $monthlyReady,
+                'total' => $total,
+                'published_at' => $period->published_at?->timezone('Asia/Jakarta')->format('d M Y, H:i').' WIB',
+            ],
+            'participants' => $withParticipants ? $rows : [],
+        ];
     }
 
     /**
@@ -1771,7 +2367,9 @@ class KpiController extends Controller
      */
     private function isHardWindowActive(KpiPeriod $period): bool
     {
-        $now = $this->kpiDebugNow();
+        // Kinerja OPS follows the canonical KPI clock so manual time travel
+        // exercises the same window rule as the production clock.
+        $now = KpiClock::now();
 
         $perfMonth = $period->bulan;
         $perfYear = $period->tahun;

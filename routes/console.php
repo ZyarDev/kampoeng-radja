@@ -3,6 +3,7 @@
 use App\Actions\Employee\ResolveEmployeeAccountRole;
 use App\Actions\Employee\SyncEmployeeAccountRole;
 use App\Models\User;
+use App\Support\KpiClock;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -58,9 +59,8 @@ Artisan::command('employees:sync-account-roles {--apply : Terapkan perubahan rol
 })->purpose('Audit atau sinkronkan role akun dengan Jabatan Karyawan secara idempotent');
 
 Artisan::command('kpi:process-deadlines', function () {
-    $now = now('Asia/Jakarta');
-    $kiNow = \App\Support\KpiClock::now();
-    \App\Models\KpiPeriod::query()->with('participants')->each(function ($period) use ($now, $kiNow): void {
+    $now = KpiClock::now();
+    \App\Models\KpiPeriod::query()->with('participants')->each(function ($period) use ($now): void {
         $next = $now->copy()->startOfMonth();
         foreach ($period->participants as $participant) {
             // 1. MPA Evaluator Assignment Deadline: End of performance month (blocked if no evaluator by day 1 of next month)
@@ -69,8 +69,8 @@ Artisan::command('kpi:process-deadlines', function () {
                 $period->update(['status' => 'blocked']);
             }
 
-            // 2a. KI uses its local-only debug clock when configured.
-            if ($kiNow->day >= 3 && $kiNow->month === $period->bulan + 1) {
+            // 2a. KI uses the canonical KPI clock.
+            if ($now->day >= 3 && $now->month === $period->bulan + 1) {
                 $score = \App\Models\KpiIndividualScore::firstOrCreate(['kpi_participant_id' => $participant->id]);
                 if ($score->status === 'draft') {
                     $score->update([
@@ -84,8 +84,13 @@ Artisan::command('kpi:process-deadlines', function () {
                 }
             }
 
-            // 2b. KOPS always uses the real application clock.
-            if ($now->day >= 3 && $now->month === $period->bulan + 1) {
+            // 2b. KOPS uses the canonical KPI clock and the performance-period
+            // deadline, including the December rollover.
+            $opsDeadline = \Carbon\Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
+                ->addMonthNoOverflow()
+                ->day(2)
+                ->endOfDay();
+            if ($now->gte($opsDeadline)) {
                 $items = \App\Models\KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
                 if ($items->isNotEmpty()) {
                     foreach ($items as $item) {
@@ -96,6 +101,7 @@ Artisan::command('kpi:process-deadlines', function () {
                                 'nilai_item' => 0,
                                 'status' => 'not_filled',
                                 'submit_type' => 'automatic',
+                                'submitted_at' => $now,
                             ]);
                         }
                     }
@@ -113,12 +119,12 @@ Artisan::command('kpi:process-deadlines', function () {
             }
             // 4. Auto-sign deadline: Tanggal 9 23:59 WIB for KI, KOPS, and Published Monthly
             $autoSignDeadline = \Carbon\Carbon::create($period->tahun, $period->bulan, 9, 23, 59, 59, 'Asia/Jakarta')->addMonth();
-            if ($kiNow->gte($autoSignDeadline)) {
+            if ($now->gte($autoSignDeadline)) {
                 $ki = \App\Models\KpiIndividualScore::where('kpi_participant_id', $participant->id)->first();
                 if ($ki && in_array($ki->status, ['submitted', 'approved', 'auto_submitted', 'not_filled'], true)) {
                     \App\Models\KpiSignature::firstOrCreate(
                         ['signable_type' => \App\Models\KpiIndividualScore::class, 'signable_id' => $ki->id, 'role' => 'atasan_langsung'],
-                        ['source' => 'automatic', 'signed_for_user_id' => $participant->atasanLangsung?->user?->id, 'signed_by_user_id' => null, 'signature_path' => null, 'signed_at' => $kiNow, 'reason' => 'deadline']
+                        ['source' => 'automatic', 'signed_for_user_id' => $participant->atasanLangsung?->user?->id, 'signed_by_user_id' => null, 'signature_path' => null, 'signed_at' => $now, 'reason' => 'deadline']
                     );
                     if ($ki->status === 'submitted') {
                         $ki->update(['status' => 'auto_signed', 'submit_type' => $ki->submit_type ?: 'automatic']);
@@ -128,8 +134,11 @@ Artisan::command('kpi:process-deadlines', function () {
             if ($now->gte($autoSignDeadline)) {
                 // KOPS Auto-Sign (pending Employee and Direct Supervisor)
                 $opsItems = \App\Models\KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
-                if ($opsItems->isNotEmpty()) {
+                if ($opsItems->isNotEmpty() && $opsItems->every(fn ($item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed', 'not_filled'], true))) {
                     foreach (['employee' => $participant->karyawan?->user?->id, 'atasan_langsung' => $participant->atasanLangsung?->user?->id] as $role => $uId) {
+                        if (! $uId) {
+                            continue;
+                        }
                         \App\Models\KpiSignature::firstOrCreate(
                             [
                                 'signable_type' => \App\Models\KpiParticipant::class,
@@ -145,6 +154,14 @@ Artisan::command('kpi:process-deadlines', function () {
                                 'reason' => 'deadline',
                             ]
                         );
+                    }
+
+                    $hasBothSignatures = \App\Models\KpiSignature::where('signable_type', \App\Models\KpiParticipant::class)
+                        ->where('signable_id', $participant->id)
+                        ->whereIn('role', ['employee', 'atasan_langsung'])
+                        ->count() >= 2;
+                    if ($hasBothSignatures) {
+                        $opsItems->where('status', 'submitted')->each(fn ($item) => $item->update(['status' => 'locked']));
                     }
                 }
 
@@ -187,10 +204,16 @@ Schedule::command('kpi:process-deadlines')->dailyAt('23:59')->timezone('Asia/Jak
 Schedule::command('kpi:process-deadlines')->hourly()->timezone('Asia/Jakarta')->withoutOverlapping();
 
 Artisan::command('kpi:ensure-current-period', function () {
-    $now = now('Asia/Jakarta');
+    $now = KpiClock::now();
     $performanceMonth = $now->copy()->subMonthNoOverflow();
     $period = app(\App\Services\KpiPeriodService::class)->ensureForPerformanceMonth($performanceMonth->month, $performanceMonth->year);
     $this->info("Periode KPI {$period->bulan}/{$period->tahun} tersedia dengan ".\App\Models\KpiParticipant::where('kpi_period_id', $period->id)->count().' peserta.');
 })->purpose('Ensure KPI period and participant snapshots for the previous performance month');
+
+Artisan::command('kpi:clock', function () {
+    $this->line('KPI Clock Mode : '.(KpiClock::isDebugging() ? 'DEBUG' : 'REAL'));
+    $this->line('KPI Date       : '.KpiClock::now()->format('Y-m-d H:i:s'));
+    $this->line('Timezone       : Asia/Jakarta');
+})->purpose('Display the effective clock used by KPI business rules');
 
 Schedule::command('kpi:ensure-current-period')->monthlyOn(1, '00:05')->timezone('Asia/Jakarta')->withoutOverlapping();

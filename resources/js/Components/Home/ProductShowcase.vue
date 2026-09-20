@@ -142,29 +142,6 @@ onBeforeUnmount(() => sectionObserver?.disconnect());
         Belum ada Produk yang ditampilkan.
       </div>
 
-      <!-- TODO: arahkan ke halaman Produk setelah requirement route dan CMS disetujui. -->
-      <div class="mt-8 text-center">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="Halaman Produk lengkap belum tersedia"
-          class="inline-flex h-11 cursor-not-allowed items-center justify-center gap-3 rounded-full border-2 border-[#075ac2] bg-white px-7 text-sm font-bold text-[#075ac2] opacity-75"
-        >
-          <span class="grid grid-cols-2 gap-[3px]" aria-hidden="true">
-            <span v-for="item in 4" :key="item" class="h-1.5 w-1.5 rounded-[1px] border border-current"></span>
-          </span>
-          Lihat Semua Produk
-        </button>
-      </div>
-
-      <img
-        src="/assets/decorations/product-section-crown-divider.png"
-        alt=""
-        aria-hidden="true"
-        class="mx-auto mt-6 h-auto w-[220px] max-w-full object-contain sm:w-[300px] lg:w-[400px]"
-        loading="lazy"
-      />
     </div>
   </div>
 </template>

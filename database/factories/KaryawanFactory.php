@@ -50,4 +50,5 @@ class KaryawanFactory extends Factory
 
         return $id;
     }
+
 }
