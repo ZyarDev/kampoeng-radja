@@ -4,29 +4,31 @@ import PublicLayout from "../Layouts/PublicLayout.vue";
 const stories = [
     {
         section: "BAGIAN 1",
-        title: "Awal Mula & Visi Sederhana",
-        image: "/assets/temporary/about-foundation.png",
+        title: "Awal Mula — 2006",
+        image: "/assets/temporary/about-foundation.png?v=20260922-2",
         paragraphs: [
-            "Didirikan dengan semangat untuk menyediakan ruang rekreasi keluarga terpadu di Jambi, Kampoeng Radja bermula dari sebuah visi sederhana: menciptakan tempat dimana tawa anak-anak bergema melampaui hiruk pikuk kota.",
-            "Sebuah mimpi untuk memberikan sarana liburan yang terjangkau namun berkesan bagi masyarakat lokal menjadi dorongan utama untuk mewujudkan proyek ambisius ini.",
+            "Berawal dari gagasan Ir. Petrie Ramli untuk menghadirkan ruang rekreasi keluarga di Jambi, Kampoeng Radja mulai membuka pintunya untuk masyarakat pada 1 April 2006. Berdiri di atas kawasan seluas sekitar 8 hektare, Kampoeng Radja hadir sebagai tempat di mana anak-anak, remaja, orang dewasa hingga keluarga dapat menikmati waktu bersama dalam satu kawasan rekreasi.",
+            "Sejak hari-hari pertamanya, Kampoeng Radja tidak hanya dibangun sebagai tempat bermain, tetapi sebagai ruang untuk menciptakan pengalaman dan kenangan. Dari sinilah perjalanan panjang Kampoeng Radja dimulai.",
         ],
     },
     {
         section: "BAGIAN 2",
-        title: "Transformasi & Komitmen",
-        image: "/assets/temporary/about-hero-aerial.png",
+        title: "Transformasi dan Komitmen — 2007–2009",
+        image: "/assets/temporary/about-transformation.jpeg?v=20260922",
         paragraphs: [
-            "Sejak peletakan batu pertama, kami berkomitmen memadukan unsur hiburan modern dengan nilai-nilai kekeluargaan lokal. Melalui dedikasi yang tak kenal lelah, sebagian tanah luas perlahan bertransformasi menjadi oase kegembiraan.",
-            "Setiap pengembangan didasarkan pada riset yang mendalam dan umpan balik berharga dari para pengunjung.",
+            "Seiring meningkatnya antusiasme masyarakat, Kampoeng Radja terus berkembang. Pada 2007, pembangunan Jasmine Water Park dimulai dan kemudian dibuka untuk umum pada 2008. Perjalanan tersebut dilanjutkan dengan penambahan fasilitas water slide pada Juni 2009, menghadirkan pengalaman rekreasi air yang semakin lengkap.",
+            "Pada tahun yang sama, Kampoeng Radja kembali memperluas pilihan rekreasinya melalui kehadiran Go Kart dan Kereta Api Mini, serta pembangunan fasilitas parkir yang lebih representatif. Salah satunya adalah area parkir kendaraan roda empat dengan konsep berundak atau terasering, yang pada masa itu menjadi sesuatu yang unik di Jambi.",
+            "Perubahan demi perubahan tersebut menjadi bagian dari komitmen Kampoeng Radja untuk terus beradaptasi dan memberikan pengalaman rekreasi yang semakin baik bagi setiap generasi pengunjung.",
         ],
     },
     {
         section: "BAGIAN 3",
-        title: "Menjadi Destinasi Professional Joy",
-        image: "/assets/temporary/about-opening.png",
+        title: "Bertumbuh Hingga Hari Ini",
+        image: "/assets/temporary/about-growth.png?v=20260923",
         paragraphs: [
-            "Hari ini, Kampoeng Radja berdiri tidak hanya sebagai taman hiburan, melainkan sebagai institusi Professional Joy — di mana setiap proses dikelola dengan ketelitian korporat demi memastikan pengalaman bermain yang aman, bersih, dan berkesan bagi setiap pengunjung.",
-            "Tim ahli kami bekerja siang dan malam untuk menjaga standar operasional yang tinggi, agar setiap kunjungan menjadi momen istimewa yang akan dikenang sepanjang masa.",
+            "Dari sebuah taman rekreasi keluarga yang mulai dibuka pada 2006, Kampoeng Radja terus berkembang mengikuti perjalanan waktu. Berbagai wahana dan fasilitas kini melengkapi kawasan rekreasi, mulai dari Kereta Api, Flying Pirate, Mobil Golf, Jasmine Water Park, Sepeda Air, Paint Ball, area Outbound dan Flying Fox, Ombang-Ambing dan Muter, hingga area Pemancingan.",
+            "Perjalanan tersebut terus berlanjut dengan hadirnya berbagai pembaruan dan pengalaman baru bagi pengunjung. Salah satu yang menjadi unggulan terbaru adalah Rainbow Slide, menghadirkan warna baru dalam perjalanan Kampoeng Radja sekaligus menjadi bagian dari transformasinya sebagai destinasi rekreasi keluarga yang terus berkembang.",
+            "Hampir dua dekade sejak pertama kali dibuka, wajah Kampoeng Radja mungkin terus berubah, wahana terus bertambah, dan generasi pengunjung terus berganti. Namun semangatnya tetap sama: menjadi tempat bagi keluarga, sahabat, dan berbagai generasi untuk bertemu, bermain, serta menciptakan kenangan bersama di Jambi.",
         ],
     },
 ];
@@ -52,7 +54,7 @@ const missions = [
                 class="relative grid h-[640px] place-items-center overflow-hidden bg-[#173e59] text-center text-white"
             >
                 <img
-                    src="/assets/temporary/about-hero-aerial.png"
+                    src="/assets/temporary/tentang-kami-hero.jpeg"
                     alt="[FIGMA SEMENTARA] Tampak aerial Kampoeng Radja"
                     class="absolute inset-0 h-full w-full object-cover"
                 />

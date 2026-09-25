@@ -11,7 +11,7 @@ import { Link } from "@inertiajs/vue3";
                 <img
                     src="/assets/temporary/footer-logo-white.png"
                     alt="Taman Wisata Kampoeng Radja"
-                    class="h-[45px] w-auto"
+                    class="h-[56px] w-auto"
                 />
                 <p
                     class="mt-7 max-w-[300px] text-[15px] leading-5 text-[#bbd0ff]"

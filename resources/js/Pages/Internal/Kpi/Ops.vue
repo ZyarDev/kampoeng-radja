@@ -2,7 +2,8 @@
 import { computed, ref } from "vue";
 import { Link, router, useForm } from "@inertiajs/vue3";
 import InternalDashboardLayout from "@/Layouts/InternalDashboardLayout.vue";
-import KpiEmployeeNavigation from "@/Components/Internal/KpiEmployeeNavigation.vue";
+import KpiEmployeeHeader from "@/Components/Internal/KpiEmployeeHeader.vue";
+import KpiEmployeeLayout from "@/Components/Internal/KpiEmployeeLayout.vue";
 import { useConfirmation } from "@/composables/useConfirmation";
 
 const props = defineProps({
@@ -19,6 +20,7 @@ const props = defineProps({
     signatures: { type: Object, default: () => ({}) },
     canSignEmployee: Boolean,
     canSignSupervisor: Boolean,
+    employeePeriods: { type: Array, default: () => [] },
 });
 
 const confirmation = useConfirmation();
@@ -328,6 +330,8 @@ const sign = async (role) => {
 const signatureState = (signature) =>
     signature?.source === "automatic"
         ? "Ditandatangani Otomatis"
+        : signature?.source === "super_admin_takeover"
+          ? "Diambil Alih Super Admin"
         : signature
           ? "Disetujui"
           : "Menunggu Persetujuan";
@@ -339,50 +343,15 @@ const signatureState = (signature) =>
         :user="user"
         content-width="wide"
     >
-        <div
-            class="min-h-[calc(100vh-64px)] bg-[#f5f8fd] px-4 py-5 sm:px-6 lg:px-7"
-        >
-            <main
-                class="mx-auto w-full rounded-[14px] border border-[#dce5f1] bg-white p-4 shadow-[0_8px_30px_rgba(30,64,175,0.06)] sm:p-5"
-            >
-                <header
-                    class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
-                >
-                    <div>
-                        <h1
-                            class="text-[28px] font-bold leading-tight text-[#0b3475]"
-                        >
-                            Kinerja OPS
-                        </h1>
-                        <p class="mt-1 text-base font-medium text-[#476595]">
-                            Indeks Prestasi Kerja Perorangan
-                        </p>
-                        <p class="mt-1 text-sm text-[#6079a4]">
-                            Pantau dan isi capaian kinerja operasional sesuai
-                            target yang telah ditetapkan.
-                        </p>
-                    </div>
-                    <div class="text-left md:text-right">
-                        <span
-                            :class="statusClass"
-                            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold"
-                            ><span
-                                class="h-2.5 w-2.5 rounded-full bg-current"
-                            ></span
-                            >{{ statusLabel }}</span
-                        >
-                        <p class="mt-2 text-sm font-medium text-[#6079a4]">
-                            Periode: {{ periodLabel }}
-                        </p>
-                    </div>
-                </header>
-
-                <KpiEmployeeNavigation
-                    v-if="!isOwner"
-                    class="mt-5"
-                    :period-id="period.id"
+        <KpiEmployeeLayout>
+                <KpiEmployeeHeader
                     :employee-id="participant.karyawan_id"
-                    active="ops"
+                    :period="period"
+                    :available-periods="employeePeriods"
+                    active-tab="ops"
+                    page-title="Kinerja OPS"
+                    :status-label="statusLabel"
+                    :status-class="statusClass"
                 />
 
                 <section
@@ -416,17 +385,15 @@ const signatureState = (signature) =>
                     <span>🔒</span
                     ><span
                         ><strong>{{
-                            windowState === "upcoming"
-                                ? "Periode pengisian belum dibuka."
-                                : "Periode pengisian telah berakhir."
+                            "Batas normal pengisian telah berakhir."
                         }}</strong>
-                        Kinerja OPS periode {{ periodLabel }} hanya dapat diisi
-                        pada tanggal 1–2 bulan berikutnya.</span
+                        Kinerja OPS periode {{ periodLabel }} sudah melewati
+                        deadline normal pengisian.</span
                     >
                 </div>
 
                 <section
-                    class="mt-4 overflow-hidden rounded-xl border border-[#d6e2f0]"
+                    class="mt-4 overflow-hidden rounded-xl border border-[#d6e2f0] bg-white"
                 >
                     <div
                         class="flex flex-col gap-3 border-b border-[#d6e2f0] px-4 py-3 lg:flex-row lg:items-center lg:justify-between"
@@ -782,9 +749,9 @@ const signatureState = (signature) =>
                 </section>
 
                 <div
-                    class="mt-4 grid gap-4 lg:grid-cols-[300px_1fr_1fr] lg:items-stretch"
+                    class="mt-4 grid w-full gap-4 lg:grid-cols-2 lg:items-stretch"
                 >
-                    <div class="flex items-start">
+                    <div class="flex items-start lg:col-span-2">
                         <button
                             v-if="isParameterEditable || (isEditable && form.items.length)"
                             type="button"
@@ -804,16 +771,18 @@ const signatureState = (signature) =>
                     </div>
 
                     <section
-                        class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3"
+                        class="rounded-xl border border-[#dce5f1] bg-white p-4 shadow-sm"
                     >
                         <div class="flex items-center justify-between gap-3">
-                            <h3 class="text-xs font-bold text-emerald-800">
-                                ● Persetujuan Atasan Langsung
+                            <h3 class="text-base font-bold text-[#173467]">
+                                🖊️ Tanda Tangan Atasan Langsung
                             </h3>
                             <span
                                 class="rounded-md px-2 py-1 text-[10px] font-semibold"
                                 :class="
-                                    supervisorSignature
+                                        supervisorSignature?.source === 'super_admin_takeover'
+                                        ? 'bg-emerald-800 text-white'
+                                        : supervisorSignature
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : 'bg-amber-100 text-amber-700'
                                 "
@@ -821,34 +790,30 @@ const signatureState = (signature) =>
                             >
                         </div>
                         <div
-                            class="mt-2 flex min-h-[72px] items-center gap-3 rounded-lg bg-white/80 p-3"
+                            class="mt-3 grid min-h-[88px] gap-3 md:grid-cols-[minmax(210px,260px)_1fr]"
                         >
-                            <div
-                                class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#e4ecfb] font-bold text-[#294d88]"
-                            >
-                                {{
-                                    (
-                                        supervisor.nama ||
-                                        participant?.atasan_langsung_snapshot ||
-                                        "A"
-                                    ).charAt(0)
-                                }}
-                            </div>
                             <div class="min-w-0 flex-1">
+                                <p class="text-[10px] text-[#7185a6]">Disetujui oleh:</p>
                                 <p
                                     class="truncate text-xs font-bold text-[#173467]"
                                 >
                                     {{
-                                        supervisor.nama ||
+                                        supervisorSignature?.signer_name || supervisor.nama ||
                                         participant?.atasan_langsung_snapshot ||
                                         "-"
                                     }}
                                 </p>
                                 <p class="text-[10px] text-[#7084a4]">
                                     {{
-                                        supervisor.jabatan?.nama_jabatan ||
+                                        supervisorSignature?.signer_position || supervisor.jabatan?.nama_jabatan ||
                                         "Atasan Langsung"
                                     }}
+                                </p>
+                                <p v-if="supervisorSignature" class="mt-3 text-[10px] text-emerald-700">
+                                    Sumber Persetujuan: {{ supervisorSignature.source === 'super_admin_takeover' ? 'Super Admin' : 'Atasan Langsung' }}
+                                </p>
+                                <p v-if="supervisorSignature" class="mt-2 text-[10px] text-[#7185a6]">
+                                    Tanggal Persetujuan: <span class="font-semibold text-[#173467]">{{ supervisorSignature.signed_at }}</span>
                                 </p>
                                 <p
                                     v-if="
@@ -865,19 +830,13 @@ const signatureState = (signature) =>
                             </div>
                             <img
                                 v-if="
-                                    supervisorSignature?.source === 'manual' &&
+                                    ['manual', 'super_admin_takeover'].includes(supervisorSignature?.source) &&
                                     supervisorSignature.signature_url
                                 "
                                 :src="supervisorSignature.signature_url"
                                 alt="Tanda tangan atasan"
-                                class="h-12 w-24 object-contain"
+                                class="order-first h-[88px] w-full rounded-lg border border-[#dce5f1] object-contain p-2 md:order-none"
                             />
-                            <div
-                                v-if="supervisorSignature"
-                                class="text-right text-[9px] text-[#7084a4]"
-                            >
-                                {{ supervisorSignature.signed_at }}
-                            </div>
                         </div>
                         <button
                             v-if="canSignSupervisor"
@@ -890,16 +849,18 @@ const signatureState = (signature) =>
                     </section>
 
                     <section
-                        class="rounded-xl border border-amber-100 bg-amber-50/70 p-3"
+                        class="rounded-xl border border-[#dce5f1] bg-white p-4 shadow-sm"
                     >
                         <div class="flex items-center justify-between gap-3">
-                            <h3 class="text-xs font-bold text-[#173467]">
-                                ● Persetujuan Karyawan
+                            <h3 class="text-base font-bold text-[#173467]">
+                                🖊️ Tanda Tangan Karyawan
                             </h3>
                             <span
                                 class="rounded-md px-2 py-1 text-[10px] font-semibold"
                                 :class="
-                                    employeeSignature
+                                        employeeSignature?.source === 'super_admin_takeover'
+                                        ? 'bg-emerald-800 text-white'
+                                        : employeeSignature
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : 'bg-amber-100 text-amber-700'
                                 "
@@ -907,21 +868,23 @@ const signatureState = (signature) =>
                             >
                         </div>
                         <div
-                            class="mt-2 flex min-h-[72px] items-center gap-3 rounded-lg bg-white/80 p-3"
+                            class="mt-3 grid min-h-[88px] gap-3 md:grid-cols-[minmax(210px,260px)_1fr]"
                         >
-                            <div
-                                class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-200 font-bold text-slate-500"
-                            >
-                                {{ (employee.nama || "K").charAt(0) }}
-                            </div>
                             <div class="min-w-0 flex-1">
+                                <p class="text-[10px] text-[#7185a6]">Ditandatangani oleh:</p>
                                 <p
                                     class="truncate text-xs font-bold text-[#173467]"
                                 >
-                                    {{ employee.nama || "-" }}
+                                    {{ employeeSignature?.signer_name || employee.nama || "-" }}
                                 </p>
                                 <p class="text-[10px] text-[#7084a4]">
                                     Karyawan
+                                </p>
+                                <p v-if="employeeSignature" class="mt-3 text-[10px] text-emerald-700">
+                                    Sumber Persetujuan: {{ employeeSignature.source === 'super_admin_takeover' ? 'Super Admin' : 'Karyawan' }}
+                                </p>
+                                <p v-if="employeeSignature" class="mt-2 text-[10px] text-[#7185a6]">
+                                    Tanggal Persetujuan: <span class="font-semibold text-[#173467]">{{ employeeSignature.signed_at }}</span>
                                 </p>
                                 <p
                                     v-if="
@@ -936,19 +899,13 @@ const signatureState = (signature) =>
                             </div>
                             <img
                                 v-if="
-                                    employeeSignature?.source === 'manual' &&
+                                    ['manual', 'super_admin_takeover'].includes(employeeSignature?.source) &&
                                     employeeSignature.signature_url
                                 "
                                 :src="employeeSignature.signature_url"
                                 alt="Tanda tangan karyawan"
-                                class="h-12 w-24 object-contain"
+                                class="order-first h-[88px] w-full rounded-lg border border-[#dce5f1] object-contain p-2 md:order-none"
                             />
-                            <div
-                                v-if="employeeSignature"
-                                class="text-right text-[9px] text-[#7084a4]"
-                            >
-                                {{ employeeSignature.signed_at }}
-                            </div>
                         </div>
                         <button
                             v-if="canSignEmployee"
@@ -960,8 +917,7 @@ const signatureState = (signature) =>
                         </button>
                     </section>
                 </div>
-            </main>
-        </div>
+        </KpiEmployeeLayout>
 
         <div
             v-if="previewImage"

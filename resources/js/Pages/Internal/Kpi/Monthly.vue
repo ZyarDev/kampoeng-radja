@@ -1,6 +1,7 @@
 <script setup>
 import InternalDashboardLayout from '@/Layouts/InternalDashboardLayout.vue';
-import KpiEmployeeNavigation from '@/Components/Internal/KpiEmployeeNavigation.vue';
+import KpiEmployeeHeader from '@/Components/Internal/KpiEmployeeHeader.vue';
+import KpiEmployeeLayout from '@/Components/Internal/KpiEmployeeLayout.vue';
 import { useForm, Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
@@ -21,6 +22,7 @@ const props = defineProps({
     canSignEmployee: Boolean,
     canSignSupervisor: Boolean,
     canSignSecondSupervisor: Boolean,
+    employeePeriods: { type: Array, default: () => [] },
 });
 
 const selectedMonthly = ref(props.monthlies?.[0] || null);
@@ -107,6 +109,7 @@ const periodLabel = computed(() => `${monthNames[props.period.bulan - 1]} ${prop
 
 const isResultView = computed(() => props.viewMode === 'result');
 const resultEmployee = computed(() => props.participant?.karyawan || {});
+const resultEmployeeId = computed(() => Number(props.monitoringEmployeeId || props.participant?.karyawan_id || props.employeeHeader?.id || 0));
 const resultMonthly = computed(() => props.monthlyDetail || {});
 const resultStatus = computed(() => {
     const status = resultMonthly.value.status;
@@ -169,23 +172,10 @@ const rewardRows = computed(() => {
 
 <template>
     <InternalDashboardLayout :title="isResultView ? 'Monthly' : 'Monthly HRD'" :user="user" content-width="wide">
-        <div class="w-full p-6 space-y-6">
+        <KpiEmployeeLayout>
 
             <template v-if="isResultView">
-                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div>
-                            <h1 class="text-3xl font-bold text-[#0b347d]">Monthly</h1>
-                            <p class="text-sm text-[#53709d]">Hasil penilaian kinerja bulanan Anda</p>
-                        </div>
-                        <div class="text-left md:text-right">
-                            <span class="inline-flex rounded-lg bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-700">● {{ resultStatus }}</span>
-                            <div class="mt-2 text-xs text-[#53709d]">Periode: {{ periodLabel }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <KpiEmployeeNavigation v-if="isMonitoring && monitoringEmployeeId" :period-id="period.id" :employee-id="monitoringEmployeeId" active="monthly" />
+                <KpiEmployeeHeader v-if="isResultView && resultEmployeeId" :employee-id="resultEmployeeId" :period="period" :available-periods="employeePeriods" active-tab="monthly" page-title="Monthly" :status-label="resultStatus" />
 
                 <section class="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
                     <h2 class="mb-3 flex items-center gap-2 text-lg font-bold text-[#0b347d]"><span class="text-xl">👤</span> Informasi Karyawan</h2>
@@ -276,7 +266,6 @@ const rewardRows = computed(() => {
                 </div>
             </div>
 
-            <KpiEmployeeNavigation v-if="isMonitoring && monitoringEmployeeId" :period-id="period.id" :employee-id="monitoringEmployeeId" active="monthly" />
 
             <!-- Completeness Warning -->
             <div v-if="!isMonitoring && !isPublishable" class="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl text-sm flex items-center gap-3">
@@ -432,6 +421,6 @@ const rewardRows = computed(() => {
             </div>
             </template>
 
-        </div>
+        </KpiEmployeeLayout>
     </InternalDashboardLayout>
 </template>

@@ -14,6 +14,9 @@ class UpdateJabatanRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['nama_jabatan' => ['required', 'string', 'max:100', Rule::unique('jabatan')->ignore($this->route('jabatan'))]];
+        return [
+            'nama_jabatan' => ['required', 'string', 'max:100', Rule::unique('jabatan')->ignore($this->route('jabatan'))],
+            'role_id' => ['nullable', 'integer', Rule::exists('role', 'id')],
+        ];
     }
 }

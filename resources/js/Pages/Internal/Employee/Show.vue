@@ -15,10 +15,19 @@ const exitOpen = ref(false);
 const accountOpen = ref(false);
 const exitForm = useForm({ tanggal_keluar: "" });
 const accountForm = useForm({ username: "", pin: "", pin_confirmation: "" });
+const todayDate = new Date().toLocaleDateString("en-CA");
 const isSuperAdmin = computed(
     () => props.permissions.roleName === "super_admin",
 );
 const rows = (items) => items.filter((item) => item.value !== undefined);
+const formatDate = (value) =>
+    value
+        ? new Intl.DateTimeFormat("id-ID", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+          }).format(new Date(`${value}T00:00:00`))
+        : "—";
 const personalRows = computed(() =>
     rows([
         { label: "NIK", value: props.employee.nik },
@@ -59,10 +68,10 @@ const workRows = computed(() =>
             value: props.employee.activeStatus,
             badge: "active",
         },
-        { label: "Tanggal Masuk", value: props.employee.joinedAt },
+        { label: "Tanggal Masuk", value: formatDate(props.employee.joinedAt) },
         {
             label: "Tanggal Keluar",
-            value: props.employee.leftAt || "—",
+            value: formatDate(props.employee.leftAt),
             muted: !props.employee.leftAt,
         },
     ]),
@@ -80,26 +89,19 @@ const destroy = async () => {
         router.delete(route("dashboard.karyawan.destroy", props.employee.id));
 };
 
-const deactivate = async () => {
-    const confirmed = await confirm({
-        type: "warning",
-        title: "Nonaktifkan Karyawan",
-        message: "Nonaktifkan Karyawan dan akun login terkait?",
-        confirmText: "Ya, Nonaktifkan",
-    });
-    if (confirmed)
-        router.patch(route("dashboard.karyawan.deactivate", props.employee.id));
+const openExit = () => {
+    exitForm.clearErrors();
+    exitForm.tanggal_keluar = "";
+    exitOpen.value = true;
 };
 
-const submitExit = async () => {
-    const confirmed = await confirm({
-        type: "warning",
-        title: "Proses Karyawan Keluar",
-        message:
-            "Apakah Anda yakin ingin memproses Karyawan ini sebagai Karyawan keluar?",
-        confirmText: "Ya, Proses",
-    });
-    if (!confirmed) return;
+const closeExit = () => {
+    if (exitForm.processing) return;
+    exitOpen.value = false;
+    exitForm.clearErrors();
+};
+
+const submitExit = () => {
     exitForm.patch(route("dashboard.karyawan.exit", props.employee.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -257,17 +259,11 @@ const resetPin = async () => {
                                 Edit
                             </Link>
                             <button
-                                class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                                @click="exitOpen = true"
-                            >
-                                Karyawan Keluar
-                            </button>
-                            <button
+                                class="rounded-lg border border-amber-300 bg-amber-100 px-4 py-2.5 text-sm font-semibold text-amber-800 shadow-sm transition hover:border-amber-400 hover:bg-amber-200"
                                 v-if="employee.activeStatus === 'aktif'"
-                                class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-100"
-                                @click="deactivate"
+                                @click="openExit"
                             >
-                                Nonaktifkan
+                                Nonaktifkan Karyawan
                             </button>
                             <button
                                 v-if="permissions.canDelete"
@@ -744,22 +740,27 @@ const resetPin = async () => {
         <div
             v-if="exitOpen"
             class="fixed inset-0 z-[70] grid place-items-center bg-slate-950/40 p-4"
-            @click.self="exitOpen = false"
+            @click.self="closeExit"
         >
             <form
                 class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
                 @submit.prevent="submitExit"
             >
                 <h3 class="text-lg font-bold text-[#15356f]">
-                    Proses Karyawan Keluar
+                    Nonaktifkan Karyawan
                 </h3>
                 <p class="mt-1 text-sm text-slate-500">
-                    Status karyawan dan akun login akan dinonaktifkan.
+                    Tentukan tanggal keluar karyawan. Setelah disimpan, status
+                    keaktifan karyawan dan akun login terkait akan berubah
+                    menjadi Nonaktif.
                 </p>
                 <label class="mt-5 block text-xs font-semibold text-slate-700"
-                    >Tanggal Keluar<input
+                    >Tanggal Keluar <span class="text-red-600">*</span><input
                         v-model="exitForm.tanggal_keluar"
                         type="date"
+                        required
+                        :min="employee.joinedAt"
+                        :max="todayDate"
                         class="mt-2 w-full rounded-lg border-slate-300"
                 /></label>
                 <p
@@ -771,15 +772,16 @@ const resetPin = async () => {
                 <div class="mt-5 flex justify-end gap-2">
                     <button
                         type="button"
-                        class="rounded-lg border border-slate-300 px-4 py-2 text-sm"
-                        @click="exitOpen = false"
+                        :disabled="exitForm.processing"
+                        class="rounded-lg border border-slate-300 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                        @click="closeExit"
                     >
                         Batal</button
                     ><button
                         :disabled="exitForm.processing"
                         class="rounded-lg bg-[#1769e0] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                        Simpan
+                        {{ exitForm.processing ? "Menyimpan..." : "Simpan" }}
                     </button>
                 </div>
             </form>

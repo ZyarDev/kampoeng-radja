@@ -395,6 +395,7 @@ const genderLabel = (gender) =>
                                 <th class="px-4 py-3">Departemen</th>
                                 <th class="px-4 py-3">Penempatan</th>
                                 <th class="px-4 py-3">Atasan Langsung</th>
+                                <th class="px-4 py-3">No HP</th>
                                 <th class="px-4 py-3">Keaktifan</th>
                                 <th class="px-4 py-3">Akun</th>
                                 <th class="px-4 py-3 text-center">Aksi</th>
@@ -444,6 +445,9 @@ const genderLabel = (gender) =>
                                 </td>
                                 <td class="px-4 py-3 text-slate-600">
                                     {{ employee.supervisor || "—" }}
+                                </td>
+                                <td class="whitespace-nowrap px-4 py-3 text-slate-600">
+                                    {{ employee.phone || "—" }}
                                 </td>
                                 <td class="px-4 py-3">
                                     <span

@@ -106,17 +106,25 @@ const observeSection = (element, ready) => {
 const expandedNews = ref(null);
 const selectedPromo = ref(null);
 const newsCards = computed(() =>
-    (props.news ?? []).map((item) => ({
-        foto_url: item.foto_url,
-        category: "Berita",
-        categoryClass: "bg-[#0052a5]",
-        title: item.title,
-        excerpt:
-            item.description.length > 150
-                ? `${item.description.slice(0, 147)}...`
-                : item.description,
-        detail: item.description,
-    })),
+    (props.news ?? []).map((item) => {
+        const description = String(item.description ?? "").trim();
+        const excerptLimit = 150;
+        const hasContinuation = description.length > excerptLimit;
+
+        return {
+            foto_url: item.foto_url,
+            category: "Berita",
+            categoryClass: "bg-[#0052a5]",
+            title: item.title,
+            fullDescription: description,
+            excerpt: hasContinuation
+                ? `${description.slice(0, excerptLimit).trimEnd()}...`
+                : description,
+            detail: hasContinuation
+                ? description.slice(excerptLimit).trimStart()
+                : "",
+        };
+    }),
 );
 const fallbackPromoCards = [
     {
@@ -156,6 +164,7 @@ const promoDirection = ref(0);
 const isPromoAnimating = ref(false);
 const isPromoTransitioning = ref(false);
 const isPromoReady = ref(false);
+let promoTouchStartX = null;
 let promoResizeFrame = null;
 const promoCards = computed(() => {
     const cmsPromoCards = (props.promotions ?? []).map((promo) => ({
@@ -230,6 +239,25 @@ const movePromo = async (direction) => {
     window.requestAnimationFrame(() => {
         promoTranslateX.value = direction > 0 ? -promoStep.value * 2 : 0;
     });
+};
+const handlePromoTouchStart = (event) => {
+    if (promoCards.value.length <= 1 || isPromoAnimating.value) return;
+
+    promoTouchStartX = event.touches?.[0]?.clientX ?? null;
+};
+const handlePromoTouchEnd = (event) => {
+    if (promoTouchStartX === null || isPromoAnimating.value) {
+        promoTouchStartX = null;
+        return;
+    }
+
+    const endX = event.changedTouches?.[0]?.clientX;
+    const distance = typeof endX === "number" ? endX - promoTouchStartX : 0;
+    promoTouchStartX = null;
+
+    if (Math.abs(distance) < 45) return;
+
+    movePromo(distance < 0 ? 1 : -1);
 };
 const finishPromoTransition = async (event) => {
     if (
@@ -378,10 +406,10 @@ const featuredCards = computed(() =>
             class="bg-[#f8f9fa] px-5 pb-20 pt-32 lg:px-0"
         >
             <div class="mx-auto max-w-[1120px]">
-                <h2 class="font-heading text-[28px] font-bold text-[#062a59]">
+                <h2 class="text-center font-heading text-[42px] font-extrabold leading-none text-[#062a59] sm:text-[52px] lg:text-[60px]">
                     Media & Berita
                 </h2>
-                <p class="mt-2 text-sm text-[#4b5563]">
+                <p class="mt-4 text-center text-sm text-[#4b5563]">
                     Informasi terbaru seputar Kampoeng Radja.
                 </p>
                 <div
@@ -391,6 +419,7 @@ const featuredCards = computed(() =>
                     <article
                         v-for="(newsItem, index) in newsCards"
                         :key="newsItem.title"
+                        :class="expandedNews === index ? 'flex flex-col' : 'flex h-[430px] flex-col'"
                         class="overflow-hidden rounded-xl border border-[#e1e2eb] bg-white"
                     >
                         <div class="relative">
@@ -405,24 +434,28 @@ const featuredCards = computed(() =>
                                 >{{ newsItem.category }}</span
                             >
                         </div>
-                        <div class="p-[18px]">
+                        <div class="flex flex-1 flex-col p-[18px]">
                             <h3
                                 class="font-heading text-xl font-bold leading-6 text-[#062a59]"
                             >
                                 {{ newsItem.title }}
                             </h3>
-                            <p class="mt-3 text-sm leading-5 text-[#4b5563]">
-                                {{ newsItem.excerpt }}
-                            </p>
                             <p
-                                v-if="expandedNews === index"
-                                class="mt-4 border-t border-[#e1e2eb] pt-4 text-sm leading-6 text-[#4b5563]"
+                                :class="
+                                    expandedNews === index
+                                        ? 'mt-3 text-sm leading-6 text-[#4b5563]'
+                                        : 'mt-3 h-[80px] overflow-hidden text-sm leading-5 text-[#4b5563]'
+                                "
                             >
-                                {{ newsItem.detail }}
+                                {{
+                                    expandedNews === index
+                                        ? newsItem.fullDescription
+                                        : newsItem.excerpt
+                                }}
                             </p>
                             <button
                                 type="button"
-                                class="mt-4 h-9 w-full rounded-md border border-[#0063c7] text-xs font-medium text-[#0063c7]"
+                                class="mt-auto h-9 w-full rounded-md border border-[#0063c7] text-xs font-medium text-[#0063c7]"
                                 :aria-expanded="expandedNews === index"
                                 @click="
                                     expandedNews =
@@ -523,13 +556,15 @@ const featuredCards = computed(() =>
                         </button>
                         <div
                             ref="promoViewport"
-                            class="overflow-hidden"
+                            class="promo-viewport overflow-hidden"
                             :class="[
                                 isPromoReady ? 'visible' : 'invisible',
                                 promoCards.length > 1
                                     ? 'mx-12 sm:mx-14 lg:mx-16'
                                     : '',
                             ]"
+                            @touchstart.passive="handlePromoTouchStart"
+                            @touchend.passive="handlePromoTouchEnd"
                         >
                             <div
                                 ref="promoTrack"
@@ -681,10 +716,10 @@ const featuredCards = computed(() =>
         <ProductShowcase :products="products" />
         <section ref="ridesSection" class="bg-[#f1f3f5] px-5 py-20 lg:px-0">
             <div class="mx-auto max-w-[1120px]">
-                <div class="flex flex-wrap items-end justify-between gap-5">
-                    <div>
+                <div class="text-center">
+                    <div class="w-full text-center">
                         <h2
-                            class="font-heading text-[28px] font-bold text-[#191c1e]"
+                            class="font-heading text-[42px] font-extrabold leading-none text-[#191c1e] sm:text-[52px] lg:text-[60px]"
                         >
                             Wahana Unggulan
                         </h2>
@@ -695,7 +730,7 @@ const featuredCards = computed(() =>
                     </div>
                     <Link
                         :href="route('wahana')"
-                        class="text-sm font-bold text-[#005cc8]"
+                        class="mt-4 inline-block text-sm font-bold text-[#005cc8]"
                         >Lihat Semua Wahana →</Link
                     >
                 </div>
@@ -744,13 +779,18 @@ const featuredCards = computed(() =>
         >
             <div class="mx-auto max-w-[1120px]">
                 <h2
-                    class="text-center font-heading text-xl font-bold text-[#191c1e]"
+                    class="text-center font-heading text-[42px] font-extrabold leading-none text-[#191c1e] sm:text-[52px] lg:text-[60px]"
                 >
                     Mitra
                 </h2>
                 <div v-if="partners?.length" class="mt-8 overflow-hidden">
                     <div
-                        class="partners-marquee flex w-max will-change-transform"
+                        :class="[
+                            'partners-marquee flex w-max will-change-transform',
+                            partners.length >= 4
+                                ? 'partners-marquee-seamless'
+                                : 'partners-marquee-single',
+                        ]"
                     >
                         <div class="flex shrink-0 items-center gap-16 pr-16">
                             <div
@@ -767,6 +807,7 @@ const featuredCards = computed(() =>
                             </div>
                         </div>
                         <div
+                            v-if="partners.length >= 4"
                             aria-hidden="true"
                             class="flex shrink-0 items-center gap-16 pr-16"
                         >
@@ -812,6 +853,11 @@ const featuredCards = computed(() =>
     animation: partners-marquee 34s linear infinite;
 }
 
+.partners-marquee-single {
+    animation-name: partners-marquee-single;
+    animation-duration: 18s;
+}
+
 @keyframes partners-marquee {
     from {
         transform: translate3d(0, 0, 0);
@@ -819,6 +865,16 @@ const featuredCards = computed(() =>
 
     to {
         transform: translate3d(-50%, 0, 0);
+    }
+}
+
+@keyframes partners-marquee-single {
+    from {
+        transform: translate3d(100vw, 0, 0);
+    }
+
+    to {
+        transform: translate3d(calc(-100% - 100vw), 0, 0);
     }
 }
 
@@ -935,6 +991,10 @@ section:nth-of-type(2) article button:hover {
 
 .home-promo-section .promo-track {
     will-change: transform;
+}
+
+.home-promo-section .promo-viewport {
+    touch-action: pan-y;
 }
 
 .home-promo-section .promo-track--animating {

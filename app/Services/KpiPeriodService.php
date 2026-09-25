@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Karyawan;
 use App\Models\KpiParticipant;
 use App\Models\KpiPeriod;
+use App\Models\MpaEvaluatorAssignment;
 use Illuminate\Support\Facades\DB;
 
 class KpiPeriodService
@@ -13,6 +14,18 @@ class KpiPeriodService
     {
         return DB::transaction(function () use ($month, $year) {
             $period = KpiPeriod::firstOrCreate(['bulan' => $month, 'tahun' => $year]);
+
+            $assignment = MpaEvaluatorAssignment::query()
+                ->where('year', $year)
+                ->where('month', $month)
+                ->first();
+
+            if ($assignment && (int) $period->mpa_evaluator_id !== (int) $assignment->evaluator_id) {
+                $period->update([
+                    'mpa_evaluator_id' => $assignment->evaluator_id,
+                    'mpa_assigned_at' => $assignment->updated_at,
+                ]);
+            }
 
             Karyawan::with(['jabatan', 'departemen', 'penempatan', 'atasanLangsung.atasanLangsung'])
                 ->where('status_keaktifan', 'aktif')

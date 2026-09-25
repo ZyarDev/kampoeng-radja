@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Support\AttendanceAccess;
 use App\Support\ClosingEventAccess;
+use App\Support\KpiClock;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -40,9 +41,19 @@ class HandleInertiaRequests extends Middleware
         );
 
         $user = $request->user();
-        $activePeriod = \App\Models\KpiPeriod::latest('id')->first();
+        // The sidebar must open the KPI period currently in progress. Using
+        // the latest database id can keep a user on an older month when a
+        // newer period has been created out of order or imported later.
+        $clockToday = KpiClock::today();
+        $activePeriod = \App\Models\KpiPeriod::query()
+            ->where('tahun', $clockToday->year)
+            ->where('bulan', $clockToday->month)
+            ->first()
+            ?? \App\Models\KpiPeriod::latest('id')->first();
         $roleName = $user?->role()->value('nama_role');
         $isHrdOrAdmin = in_array($roleName, ['admin', 'super_admin'], true) ||
+            in_array(mb_strtolower(trim($user?->karyawan?->jabatan?->nama_jabatan ?? '')), ['hrd', 'direktur', 'dirut', 'direktur utama'], true);
+        $isHrdOrDirektur = $roleName === 'super_admin' ||
             in_array(mb_strtolower(trim($user?->karyawan?->jabatan?->nama_jabatan ?? '')), ['hrd', 'direktur', 'dirut', 'direktur utama'], true);
 
         $isSupervisor = false;
@@ -57,6 +68,17 @@ class HandleInertiaRequests extends Middleware
             $isMpaEvaluator = $activePeriod->mpa_evaluator_id === $user->id;
         }
 
+        $hasPersonalKpiParticipant = false;
+        if ($user?->karyawan_id && $activePeriod) {
+            $hasPersonalKpiParticipant = \App\Models\KpiParticipant::query()
+                ->where('kpi_period_id', $activePeriod->id)
+                ->where('karyawan_id', $user->karyawan_id)
+                ->exists();
+        }
+        $normalizedPosition = mb_strtolower(trim((string) ($user?->karyawan?->jabatan?->nama_jabatan ?? '')));
+        $canViewPersonalKpi = $hasPersonalKpiParticipant
+            && ! in_array($normalizedPosition, ['dirut', 'direktur', 'direktur utama'], true);
+
         return [
             ...parent::share($request),
             'auth' => [
@@ -66,8 +88,16 @@ class HandleInertiaRequests extends Middleware
                 'cms' => [
                     'canManage' => $cmsCanManage,
                 ],
+                'employeeMasters' => [
+                    'canManage' => $roleName === 'super_admin',
+                ],
                 'kpi' => [
                     'activePeriodId' => $activePeriod?->id,
+                    'personalEmployeeId' => $user?->karyawan_id,
+                    'canViewPersonal' => $canViewPersonalKpi,
+                    'canManagePeriod' => $roleName === 'super_admin',
+                    'canViewPeriod' => $isHrdOrAdmin || $roleName === 'user',
+                    'canAccessMpa' => $isMpaEvaluator || $isHrdOrDirektur,
                     'isSupervisor' => $isSupervisor,
                     'isMpaEvaluator' => $isMpaEvaluator,
                     'isHrdOrAdmin' => $isHrdOrAdmin,

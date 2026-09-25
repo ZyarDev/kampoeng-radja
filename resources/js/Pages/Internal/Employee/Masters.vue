@@ -6,12 +6,13 @@ import { useConfirmation } from "@/composables/useConfirmation";
 defineProps({
     user: { type: Object, required: true },
     jabatan: { type: Array, required: true },
+    roles: { type: Array, required: true },
     departemen: { type: Array, required: true },
     penempatan: { type: Array, required: true },
 });
 const { confirm } = useConfirmation();
 const modal = ref(null);
-const form = useForm({ name: "" });
+const form = useForm({ name: "", role_id: "" });
 const nameKey = (type) =>
     ({
         jabatan: "nama_jabatan",
@@ -24,11 +25,22 @@ const typeLabel = (type) =>
         departemen: "Departemen",
         penempatan: "Penempatan",
     })[type];
+const roleLabel = (roleName) => {
+    if (!roleName) return "Belum Ditentukan";
+    return roleName === "super_admin"
+        ? "Super Admin"
+        : roleName === "admin"
+          ? "Admin"
+          : roleName === "user"
+            ? "User"
+            : roleName;
+};
 const open = (type, item = null) => {
     modal.value = { type, item };
     form.reset();
     form.clearErrors();
     form.name = item ? item[nameKey(type)] : "";
+    form.role_id = type === "jabatan" && item?.role_id ? String(item.role_id) : "";
 };
 const close = () => {
     modal.value = null;
@@ -49,6 +61,9 @@ const submit = async () => {
     const payloadKey = nameKey(modal.value.type);
     form.transform(() => ({
         [payloadKey]: form.name,
+        ...(modal.value.type === "jabatan"
+            ? { role_id: form.role_id || null }
+            : {}),
         ...(isEdit ? { _method: "put" } : {}),
     })).post(route(routeName, isEdit ? modal.value.item.id : undefined), {
         onSuccess: close,
@@ -182,6 +197,12 @@ const remove = async (type, item) => {
                                                 : "Nama Departemen"
                                         }}
                                     </th>
+                                    <th
+                                        v-if="group.type === 'jabatan'"
+                                        class="w-36 px-4 py-3"
+                                    >
+                                        Role
+                                    </th>
                                     <th class="w-24 px-4 py-3 text-center">
                                         Aksi
                                     </th>
@@ -200,6 +221,21 @@ const remove = async (type, item) => {
                                         class="px-4 py-3.5 font-semibold text-slate-700"
                                     >
                                         {{ item[group.nameKey] }}
+                                    </td>
+                                    <td
+                                        v-if="group.type === 'jabatan'"
+                                        class="px-4 py-3.5"
+                                    >
+                                        <span
+                                            :class="
+                                                item.role
+                                                    ? 'bg-blue-50 text-[#0756d8] ring-blue-100'
+                                                    : 'bg-amber-50 text-amber-700 ring-amber-200'
+                                            "
+                                            class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 ring-inset"
+                                        >
+                                            {{ roleLabel(item.role?.nama_role) }}
+                                        </span>
                                     </td>
                                     <td class="px-4 py-3.5">
                                         <div
@@ -253,7 +289,7 @@ const remove = async (type, item) => {
                                 </tr>
                                 <tr v-if="group.items.length === 0">
                                     <td
-                                        colspan="3"
+                                        :colspan="group.type === 'jabatan' ? 4 : 3"
                                         class="px-5 py-12 text-center text-slate-400"
                                     >
                                         Belum ada data.
@@ -282,13 +318,32 @@ const remove = async (type, item) => {
                     Masukkan nama yang akan digunakan pada data karyawan.
                 </p>
                 <label class="mt-4 block text-xs font-semibold text-slate-700"
-                    >Nama<input
+                    >{{ modal.type === "jabatan" ? "Nama Jabatan" : "Nama" }}<input
                         v-model="form.name"
                         autofocus
                         class="mt-2 h-10 w-full rounded-lg border-slate-300 text-sm focus:border-[#1769e0] focus:ring-[#1769e0]"
                         type="text"
                         maxlength="100"
                 /></label>
+                <label
+                    v-if="modal.type === 'jabatan'"
+                    class="mt-4 block text-xs font-semibold text-slate-700"
+                >
+                    Role
+                    <select
+                        v-model="form.role_id"
+                        class="mt-2 h-10 w-full rounded-lg border-slate-300 text-sm focus:border-[#1769e0] focus:ring-[#1769e0]"
+                    >
+                        <option value="">Belum Ditentukan</option>
+                        <option
+                            v-for="role in roles"
+                            :key="role.id"
+                            :value="String(role.id)"
+                        >
+                            {{ roleLabel(role.nama_role) }}
+                        </option>
+                    </select>
+                </label>
                 <p
                     v-if="Object.values(form.errors)[0]"
                     class="mt-1 text-xs text-red-600"

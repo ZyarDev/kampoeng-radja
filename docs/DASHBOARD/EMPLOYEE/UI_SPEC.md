@@ -1,7 +1,7 @@
 # UI_SPEC — Kelola Karyawan
 
 **Status:** READY FOR IMPLEMENTATION
-**Last Updated:** 2026-08-22 — sinkronisasi authoritative Jabatan → role akun
+**Last Updated:** 2026-09-20 — konfigurasi Role pada master Jabatan
 
 Visual references:
 - `references/data_karyawan.png`
@@ -252,7 +252,7 @@ Action minimum:
 
 Jika Karyawan nonaktif, tombol Aktivasi disabled dan UI menjelaskan bahwa master Karyawan harus aktif. Tidak ada action lihat PIN, lihat hash, atau delete akun.
 
-Role yang ditampilkan pada section Akun Sistem harus berasal dari relasi akun terbaru. Setelah Super Admin mengubah Jabatan Karyawan, redirect kembali ke Detail menampilkan role hasil sinkronisasi tanpa input role tambahan dari browser. Karyawan tanpa akun tetap menampilkan mapping Jabatan sebagai calon role dan tidak dibuatkan akun otomatis.
+Role akun existing tetap berasal dari relasi akun. Karyawan tanpa akun menampilkan Role dari konfigurasi Jabatan sebagai calon role dan tidak dibuatkan akun otomatis. Perubahan Jabatan atau Role Jabatan tidak menyinkronkan role akun existing secara otomatis.
 
 ---
 
@@ -321,16 +321,19 @@ Jika tidak eligible:
 Visual Jabatan dan Departemen tetap mengikuti `departemen_jabatan.png`; Penempatan ditambahkan dengan pola card/list yang sama tanpa redesign halaman.
 
 Desktop:
-- dua card berdampingan:
+- tiga card dengan pola visual yang sama:
   - Data Jabatan
   - Data Departemen
+  - Data Penempatan
+
+Data Jabatan menampilkan kolom Nama Jabatan, Role, dan Aksi. Role kosong ditampilkan sebagai badge `Belum Ditentukan`. Modal Tambah/Edit Jabatan memiliki field Nama Jabatan dan select Role dari master `role`; Role boleh dikosongkan.
 
 Action:
 - Tambah;
 - Edit;
 - Delete.
 
-Tambah/Edit boleh menggunakan modal compact yang konsisten dengan reference karena field hanya satu nama.
+Tambah/Edit boleh menggunakan modal compact yang konsisten dengan reference.
 
 Delete:
 - confirmation;
@@ -438,4 +441,4 @@ Wajib:
 - halaman dan submit Ganti PIN memerlukan `auth + active` tetapi dikecualikan dari forced-PIN redirect;
 - logout selalu tersedia bagi authenticated user;
 - route internal lain tidak boleh dapat dibypass selama `must_change_pin = true`.
-- update Karyawan dan sinkronisasi role akun berlangsung atomik; request internal berikutnya membaca role terbaru dari database.
+- create account membaca `jabatan.role_id`; perubahan Jabatan Karyawan tidak mengubah role akun existing.

@@ -1,10 +1,19 @@
 # LOG.md — Kampoeng Radja Project Tracker
 
-Terakhir diperbarui: **26 Agustus 2026**
+Terakhir diperbarui: **23 September 2026**
 Dasar status: audit source code pada working tree aktif, bukan klaim dokumentasi
-Fokus terbaru: **Normalisasi workspace `D:\kampoeng-radja` dan recovery CMS Hero Beranda**
+Fokus terbaru: **Perbaikan responsive Produk, swipe Promo mobile, dan pembaruan aset Tentang Kami**
 
 Dokumen ini adalah pintu masuk tunggal untuk melihat posisi proyek. Untuk detail requirement tetap buka dokumen sumber yang dirujuk; `LOG.md` tidak menggantikan PRD, aturan agent, atau Figma.
+
+## Perubahan Terbaru — 23 September 2026
+
+- Section **Produk** di Beranda menggunakan container mobile rasio `16:9` dan gambar `object-cover`, sehingga gambar memenuhi area container pada layar HP. Rasio aset Hero Produk yang tersimpan terukur sekitar `1896×829` atau `±16:7`; rasio desktop `16:7` tetap dipertahankan.
+- Section **Promo** di Beranda sekarang mendukung swipe kiri/kanan pada perangkat sentuh. Tombol panah dan carousel desktop tetap dipertahankan; gesture swipe tidak mengganggu scroll vertikal.
+- Aset gambar **Bagian 1** Tentang Kami diperbarui ke `public/assets/temporary/about-foundation.png` dan aset **Bagian 2** ditambahkan sebagai `public/assets/temporary/about-transformation.jpeg`.
+- Aset gambar **Bagian 3** Tentang Kami diperbarui ke `public/assets/temporary/about-growth.png`.
+- Referensi gambar Bagian 1, Bagian 2, dan Bagian 3 pada `resources/js/Pages/TentangKami.vue` sudah diarahkan ke aset terbaru.
+- Verifikasi terakhir: Vite production build berhasil dan `git diff --check` tidak menemukan error whitespace. Warning line-ending CRLF pada file existing tetap ada.
 
 ## Handoff Snapshot — 26 Agustus 2026
 

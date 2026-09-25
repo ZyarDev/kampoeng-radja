@@ -1,7 +1,7 @@
 # PERMISSIONS — Kelola Karyawan
 
 **Status:** READY FOR IMPLEMENTATION
-**Last Updated:** 2026-08-22 — sinkronisasi authoritative Jabatan → role akun
+**Last Updated:** 2026-09-20 — konfigurasi Role pada master Jabatan
 
 > **Baseline Arif 2026-08-29:** Master organisasi adalah Jabatan, Departemen, dan Penempatan. Jabatan wajib; Departemen/Penempatan nullable. Mapping role authoritative: Dirut/Direktur/Manajer → `super_admin`; SPV/Supervisor → `admin`; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility → `user`. `Staff` dan konsep `Posisi` dibatalkan. Atasan Langsung adalah self-reference Karyawan nullable. KPI tidak diimplementasikan.
 
@@ -159,11 +159,11 @@ Aturan authoritative:
 6. akun Karyawan nonaktif tidak boleh diaktifkan;
 7. aktivasi kembali master Karyawan tidak otomatis mengaktifkan akun;
 8. ketika Karyawan dinonaktifkan atau diproses keluar, akun existing ikut dinonaktifkan.
-9. perubahan Jabatan Karyawan yang memiliki akun otomatis menyinkronkan `users.role_id` memakai mapping yang sama dengan Create Account;
-10. sinkronisasi role hanya mengubah `role_id`; `username`, PIN/hash, `is_active`, dan `must_change_pin` tetap;
-11. perubahan Jabatan Karyawan tanpa akun tidak membuat akun otomatis.
+9. akun baru memakai `jabatan.role_id` sebagai sumber `users.role_id`;
+10. perubahan Role Jabatan tidak mengubah akun existing secara massal;
+11. perubahan Jabatan Karyawan tidak menyinkronkan role akun existing secara otomatis.
 
-## 7.1 Role Mapping
+## 7.1 Konfigurasi Role Jabatan
 
 | Kategori Jabatan | Role |
 |---|---|
@@ -171,9 +171,9 @@ Aturan authoritative:
 | SPV/Supervisor | `admin` |
 | Marketing, Marcom, IT, Finance, Kasir, Operasional, General, Facility | `user` |
 
-Pencocokan tidak case-sensitive dan menggunakan token/kategori Jabatan yang dinormalisasi. Jabatan lain tidak memperoleh fallback.
+Mapping di atas digunakan sebagai backfill awal untuk Jabatan existing. Setelah itu, Super Admin mengelola relasi `jabatan.role_id` melalui Master Organisasi. Jabatan lain tidak memperoleh fallback.
 
-Role authorization selalu dibaca dari relasi database pada request terbaru. Setelah Jabatan dan role akun disinkronkan, request berikutnya langsung menggunakan hak akses role terbaru tanpa menyimpan salinan role di session.
+Role authorization akun tetap dibaca dari `users.role_id`. `jabatan.role_id` merupakan konfigurasi default untuk pembuatan akun baru dan tidak menggantikan role akun existing.
 
 ## 7.2 Forced First PIN Change
 

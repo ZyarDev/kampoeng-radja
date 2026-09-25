@@ -3,10 +3,8 @@
 namespace App\Http\Controllers\Employee;
 
 use App\Actions\Employee\CreateEmployee;
-use App\Actions\Employee\DeactivateEmployee;
 use App\Actions\Employee\DeleteEmployee;
 use App\Actions\Employee\ProcessEmployeeExit;
-use App\Actions\Employee\ResolveEmployeeAccountRole;
 use App\Actions\Employee\UpdateEmployee;
 use App\Exports\Employee\EmployeesExport;
 use App\Http\Controllers\Controller;
@@ -162,12 +160,13 @@ class EmployeeController extends Controller
         return to_route('dashboard.karyawan.show', $employee)->with('success', 'Karyawan berhasil ditambahkan.');
     }
 
-    public function show(Request $request, Karyawan $karyawan, ResolveEmployeeAccountRole $roleResolver): Response
+    public function show(Request $request, Karyawan $karyawan): Response
     {
         [$roleName] = $this->accessContext($request);
         $employee = Karyawan::query()
             ->with([
-                'jabatan:id,nama_jabatan',
+                'jabatan:id,nama_jabatan,role_id',
+                'jabatan.role:id,nama_role',
                 'departemen:id,nama_departemen',
                 'penempatan:id,nama_penempatan',
                 'atasanLangsung:id,nama',
@@ -176,7 +175,7 @@ class EmployeeController extends Controller
             ->findOrFail($karyawan->id);
 
         return Inertia::render('Internal/Employee/Show', [
-            'employee' => $this->employeeDetailPayload($employee, $roleName, $roleResolver),
+            'employee' => $this->employeeDetailPayload($employee, $roleName),
             'permissions' => [
                 'roleName' => $roleName,
                 'canManage' => $roleName === 'super_admin',
@@ -216,18 +215,11 @@ class EmployeeController extends Controller
         return to_route('dashboard.karyawan.show', $karyawan)->with('success', 'Data karyawan berhasil diperbarui.');
     }
 
-    public function deactivate(Karyawan $karyawan, DeactivateEmployee $action): RedirectResponse
-    {
-        $action->handle($karyawan);
-
-        return back()->with('success', 'Karyawan dan akun terkait berhasil dinonaktifkan.');
-    }
-
     public function processExit(ExitEmployeeRequest $request, Karyawan $karyawan, ProcessEmployeeExit $action): RedirectResponse
     {
         $action->handle($karyawan, $request->validated('tanggal_keluar'));
 
-        return back()->with('success', 'Karyawan keluar berhasil diproses.');
+        return back()->with('success', 'Karyawan dan akun terkait berhasil dinonaktifkan.');
     }
 
     public function destroy(Karyawan $karyawan, DeleteEmployee $action): RedirectResponse
@@ -270,13 +262,13 @@ class EmployeeController extends Controller
     private function employeeDetailPayload(
         Karyawan $employee,
         string $roleName,
-        ?ResolveEmployeeAccountRole $roleResolver = null,
     ): array {
         $payload = $this->employeeCommonPayload($employee);
 
         if ($roleName === 'super_admin') {
             $account = $employee->user;
-            $suggestedRole = $account ? null : $roleResolver?->handle($employee->jabatan?->nama_jabatan);
+            $suggestedRole = $account ? null : mb_strtolower($employee->jabatan?->role?->nama_role ?? '');
+            $suggestedRole = $suggestedRole !== '' ? $suggestedRole : null;
 
             $payload += [
                 'positionId' => $employee->jabatan_id,
@@ -326,6 +318,7 @@ class EmployeeController extends Controller
             'department' => $employee->departemen?->nama_departemen,
             'placement' => $employee->penempatan?->nama_penempatan,
             'supervisor' => $employee->atasanLangsung?->nama,
+            'phone' => $employee->no_hp,
             'hasAccount' => $employee->relationLoaded('user') ? $employee->user !== null : $employee->user()->exists(),
             'employmentStatus' => $employee->status_kerja,
             'activeStatus' => $employee->status_keaktifan,

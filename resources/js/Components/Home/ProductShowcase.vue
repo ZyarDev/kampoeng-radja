@@ -73,7 +73,7 @@ onBeforeUnmount(() => sectionObserver?.disconnect());
   >
     <div class="mx-auto max-w-[1120px]">
       <header class="mx-auto max-w-[720px] text-center">
-        <h2 id="product-showcase-title" class="font-heading text-[38px] font-extrabold leading-none text-[#062a59] sm:text-[48px] lg:text-[56px]">Produk</h2>
+        <h2 id="product-showcase-title" class="font-heading text-[42px] font-extrabold leading-none text-[#062a59] sm:text-[52px] lg:text-[60px]">Produk</h2>
         <p class="mx-auto mt-4 max-w-[620px] text-sm leading-6 text-[#596273] sm:text-base">
           Beragam paket, fasilitas, dan aktivitas terbaik dari Kampoeng Radja<br class="hidden sm:block" />
           untuk pengalaman belajar, bermain, dan berkesan.
@@ -81,7 +81,7 @@ onBeforeUnmount(() => sectionObserver?.disconnect());
       </header>
 
       <div v-if="activeProduct" class="relative mt-10 lg:mt-12">
-        <div class="relative aspect-[4/3] overflow-hidden rounded-[22px] border-[6px] border-white bg-[radial-gradient(circle_at_center,#f7fbff_0%,#e4f2ff_100%)] shadow-[0_18px_44px_rgba(13,64,125,.16)] sm:aspect-[16/8] lg:aspect-[16/7]">
+        <div class="relative aspect-[16/9] overflow-hidden rounded-[22px] border-[6px] border-white bg-[radial-gradient(circle_at_center,#f7fbff_0%,#e4f2ff_100%)] shadow-[0_18px_44px_rgba(13,64,125,.16)] sm:aspect-[16/8] lg:aspect-[16/7]">
           <Transition :name="transitionName" mode="out-in">
             <div
               :key="activeProduct.id"
@@ -91,7 +91,7 @@ onBeforeUnmount(() => sectionObserver?.disconnect());
                 v-if="activeHeroImage"
                 :src="activeHeroImage"
                 :alt="`Produk ${activeProduct.name}`"
-                class="relative z-10 h-full w-full object-contain"
+                class="relative z-10 h-full w-full object-cover object-center"
                 decoding="async"
               />
             </div>

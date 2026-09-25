@@ -2,7 +2,8 @@
 import { ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import InternalDashboardLayout from '@/Layouts/InternalDashboardLayout.vue';
-import KpiEmployeeNavigation from '@/Components/Internal/KpiEmployeeNavigation.vue';
+import KpiEmployeeHeader from '@/Components/Internal/KpiEmployeeHeader.vue';
+import KpiEmployeeLayout from '@/Components/Internal/KpiEmployeeLayout.vue';
 import { useConfirmation } from '@/Composables/useConfirmation';
 
 const props = defineProps({
@@ -11,17 +12,22 @@ const props = defineProps({
   scores: Array,
   isMonitoring: Boolean,
   monitoringEmployeeId: Number,
+  employeePeriods: { type: Array, default: () => [] },
 });
 
 const { confirmAction } = useConfirmation();
+const scoreRecordLabel = (score) => score.signature?.source === 'super_admin_takeover'
+  ? 'Dialihkan Super Admin'
+  : (score.signature?.role === 'employee' ? 'Disetujui Karyawan' : 'Disetujui Atasan');
+const signedAtLabel = (score) => score.signature?.signed_at
+  ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(score.signature.signed_at))
+  : '-';
 
 const categoryColor = (cat) => {
   switch (cat) {
-    case 'Sangat Baik': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    case 'Baik': return 'bg-blue-100 text-blue-800 border-blue-300';
-    case 'Cukup': return 'bg-amber-100 text-amber-800 border-amber-300';
-    case 'Kurang': return 'bg-orange-100 text-orange-800 border-orange-300';
-    default: return 'bg-rose-100 text-rose-800 border-rose-300';
+    case 'Reward': return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    case 'Punishment': return 'bg-rose-100 text-rose-800 border-rose-300';
+    default: return 'bg-slate-100 text-slate-700 border-slate-300';
   }
 };
 
@@ -75,7 +81,7 @@ const submitCorrection = async () => {
 const handleSign = async (scoreRecord) => {
   const confirmed = await confirmAction({
     title: 'Tanda Tangan Nilai Akhir',
-    message: 'Tandatangani dokumen Nilai Akhir peserta ini sebagai Atasan Langsung.',
+    message: 'Tandatangani dokumen Nilai Akhir ini sebagai bagian dari penyelesaian proses KPI.',
     confirmText: 'Tandatangani',
   });
 
@@ -91,27 +97,11 @@ const handleSign = async (scoreRecord) => {
 
 <template>
   <InternalDashboardLayout title="Nilai Akhir KPI" :user="user">
-    <div class="space-y-6 p-6">
-      <!-- Header -->
-      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-2xl font-bold text-slate-900">Nilai Akhir KPI Karyawan</h1>
-          <p class="text-sm text-slate-500">
-            Periode Performance Month: <span class="font-semibold text-slate-700">{{ period.bulan }}/{{ period.tahun }}</span>
-          </p>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 border border-blue-200">
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Auto-calculated Baseline
-          </span>
-        </div>
+    <KpiEmployeeLayout>
+      <KpiEmployeeHeader v-if="monitoringEmployeeId" :employee-id="monitoringEmployeeId" :period="period" :available-periods="employeePeriods" active-tab="final" page-title="Nilai Akhir" />
+      <div v-else class="flex min-h-[68px] items-center justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div><h1 class="text-2xl font-bold text-slate-900">Nilai Akhir</h1><p class="text-sm text-slate-500">Periode KPI: {{ period.bulan }}/{{ period.tahun }}</p></div>
       </div>
-
-      <KpiEmployeeNavigation v-if="isMonitoring && monitoringEmployeeId" :period-id="period.id" :employee-id="monitoringEmployeeId" active="final" />
 
       <!-- Main Table Card -->
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -158,7 +148,7 @@ const handleSign = async (scoreRecord) => {
                       <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                       </svg>
-                      TTD SPV
+                      {{ scoreRecordLabel(s) }}
                     </span>
                     <span v-else class="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                       Ditandatangani Otomatis oleh Sistem
@@ -169,7 +159,7 @@ const handleSign = async (scoreRecord) => {
                     @click="handleSign(s)"
                     class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
                   >
-                    Tanda Tangan
+                    Tanda Tangan Nilai Akhir
                   </button>
                   <span v-else class="text-xs text-slate-400 italic">Belum Lengkap</span>
                 </td>
@@ -186,6 +176,38 @@ const handleSign = async (scoreRecord) => {
           </table>
         </div>
       </div>
+
+      <section v-if="monitoringEmployeeId && scores[0]?.signature?.role === 'employee'" class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+        <div class="flex items-center gap-2 text-base font-bold text-[#173f82]">
+          <span class="text-xl" aria-hidden="true">🖊</span>
+          <span>Tanda Tangan Karyawan</span>
+          <span class="ml-auto rounded-md bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">Disetujui</span>
+        </div>
+        <div class="mt-3 grid items-center gap-4 md:grid-cols-[240px_1fr]">
+          <div class="text-xs text-[#52709d]">
+            <div>Ditandatangani oleh:</div>
+            <div class="font-bold text-[#173f82]">{{ scores[0].signature.signer_name || scores[0].nama }}</div>
+            <div>{{ scores[0].signature.role === 'employee' ? 'Karyawan' : 'Atasan Langsung' }}</div>
+            <div class="mt-3 text-emerald-700">Sumber Persetujuan: {{ scores[0].signature.source === 'super_admin_takeover' ? 'Super Admin' : 'Karyawan' }}</div>
+            <div class="mt-3">Tanggal Persetujuan: {{ signedAtLabel(scores[0]) }}</div>
+          </div>
+          <div class="flex min-h-[88px] items-center justify-center rounded-lg border border-blue-100 bg-white p-3">
+            <img v-if="scores[0].signature.signature_url" :src="scores[0].signature.signature_url" alt="Tanda tangan karyawan" class="h-20 max-w-[180px] object-contain" />
+            <span v-else class="text-xs text-slate-400">Tanda tangan tersimpan tanpa gambar.</span>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="monitoringEmployeeId && scores[0] && !scores[0].signature" class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-bold text-[#173f82]">Tanda Tangan Karyawan</h2>
+            <p class="mt-1 text-xs text-[#52709d]">Tanda tangan dilakukan setelah seluruh signature Monthly yang berlaku selesai.</p>
+          </div>
+          <button v-if="scores[0].is_ready" type="button" @click="handleSign(scores[0])" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Tanda Tangan Nilai Akhir</button>
+          <span v-else class="rounded-md bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Menunggu Monthly lengkap</span>
+        </div>
+      </section>
 
       <!-- Correction Modal -->
       <div v-if="isCorrectionOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
@@ -260,6 +282,6 @@ const handleSign = async (scoreRecord) => {
           </form>
         </div>
       </div>
-    </div>
+    </KpiEmployeeLayout>
   </InternalDashboardLayout>
 </template>

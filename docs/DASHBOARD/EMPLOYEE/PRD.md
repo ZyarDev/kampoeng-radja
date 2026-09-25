@@ -421,7 +421,7 @@ Sistem mengikat akun ke karyawan_id yang dipilih.
 
 Super Admin menentukan username yang unik.
 
-Role akun ditentukan sesuai baseline terbaru: Dirut/Direktur/Manajer = super_admin; SPV/Supervisor = admin; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility = user.
+Role akun baru dibaca dari relasi `karyawan → jabatan → role_id`. Baseline lama tetap digunakan hanya sebagai backfill awal untuk Jabatan existing.
 
 Super Admin membuat PIN awal sementara 6 digit dan melakukan konfirmasi PIN.
 
@@ -473,42 +473,13 @@ Timestamp
 
 13. Aturan Role Akun Berdasarkan Jabatan
 
-Jabatan
+Setiap Jabatan memiliki `role_id` nullable yang dapat diatur Super Admin melalui Master Organisasi → Data Jabatan. Pilihan Role berasal dari master `role`; tidak ada fallback otomatis untuk Jabatan yang belum dikonfigurasi.
 
-Role
+Saat akun baru dibuat, backend menyalin `jabatan.role_id` ke `users.role_id`. Jabatan tanpa Role menolak pembuatan akun dengan pesan konfigurasi yang jelas.
 
-Dirut
+Perubahan Role pada Jabatan hanya memengaruhi akun yang dibuat setelah perubahan. Perubahan tersebut tidak melakukan bulk update pada akun existing. Perubahan Jabatan Karyawan juga tidak menyinkronkan `users.role_id` akun existing secara otomatis.
 
-super_admin
-
-Direktur
-
-super_admin
-
-Manajer
-
-super_admin
-
-SPV / Supervisor
-
-admin
-
-Marketing / Marcom / IT / Finance / Kasir
-
-user
-
-Operasional / General / Facility
-
-user
-
-Jabatan Karyawan merupakan sumber authoritative untuk `users.role_id`. Mapping ini digunakan oleh backend pada dua jalur yang sama:
-
-1. saat Super Admin membuat akun Karyawan;
-2. saat Super Admin mengubah Jabatan Karyawan yang sudah memiliki akun.
-
-Perubahan Jabatan harus menyimpan data Karyawan dan menyinkronkan `users.role_id` dalam satu transaksi. Perubahan tersebut tidak boleh mengubah `username`, PIN/hash, `is_active`, atau `must_change_pin`. Jika Karyawan belum memiliki akun, perubahan Jabatan tidak membuat akun otomatis; mapping terbaru baru digunakan ketika akun dibuat kemudian.
-
-Jabatan tanpa mapping tidak boleh diberi fallback role. Jika Karyawan sudah memiliki akun, perubahan ke Jabatan tanpa mapping ditolak agar Jabatan dan role akun tidak menjadi tidak konsisten.
+Baseline lama tetap digunakan sebagai backfill awal: Dirut/Direktur/Manajer → `super_admin`; SPV/Supervisor → `admin`; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility → `user`. Jabatan lain tetap `Belum Ditentukan` sampai dikonfigurasi Super Admin.
 
 14. Tabel Database yang Digunakan
 

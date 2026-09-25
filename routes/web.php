@@ -47,12 +47,13 @@ Route::prefix('dashboard')
     ->group(function (): void {
         Route::prefix('kpi')->name('kpi.')->group(function (): void {
             Route::get('/', [KpiController::class, 'index'])->name('index');
+            Route::get('period/{period}/employee/{employee}/export', [KpiController::class, 'exportEmployeeKpi'])->name('employee.export');
             Route::post('period', [KpiController::class, 'createPeriod'])->name('period.store');
             Route::get('period/{period}/karyawan', [KpiController::class, 'employees'])->name('employees');
             Route::match(['get','post'],'daily', [KpiController::class, 'daily'])->name('daily');
             Route::post('daily/bulk-approve', [KpiController::class, 'bulkApproveDaily'])->name('daily.bulk-approve');
             Route::post('daily/{report}/approve', [KpiController::class, 'approveDaily'])->name('daily.approve');
-            Route::post('period/{period}/mpa/assign', [KpiController::class, 'assignEvaluator'])->name('mpa.assign');
+            Route::post('mpa/evaluator-assignment', [KpiController::class, 'assignEvaluator'])->name('mpa.assign');
             Route::post('period/{period}/mpa/takeover/{monthly}', [KpiController::class, 'takeoverMpa'])->name('mpa.takeover');
             Route::post('period/{period}/monthly/publish', [KpiController::class, 'publishMonthly'])->name('monthly.publish');
             Route::post('period/{period}/monthly/save', [KpiController::class, 'saveMonthlyHrd'])->name('monthly.save');
@@ -139,7 +140,6 @@ Route::prefix('dashboard')
             Route::post('karyawan', [EmployeeController::class, 'store'])->name('karyawan.store');
             Route::put('karyawan/{karyawan}', [EmployeeController::class, 'update'])->name('karyawan.update');
             Route::delete('karyawan/{karyawan}', [EmployeeController::class, 'destroy'])->name('karyawan.destroy');
-            Route::patch('karyawan/{karyawan}/deactivate', [EmployeeController::class, 'deactivate'])->name('karyawan.deactivate');
             Route::patch('karyawan/{karyawan}/exit', [EmployeeController::class, 'processExit'])->name('karyawan.exit');
             Route::get('karyawan/{karyawan}/foto-ktp', [EmployeeController::class, 'photo'])->name('karyawan.photo');
             Route::post('karyawan/{karyawan}/account', [EmployeeAccountController::class, 'store'])->name('karyawan.account.store');

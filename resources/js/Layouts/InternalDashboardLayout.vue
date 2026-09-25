@@ -34,26 +34,56 @@ const cmsExpanded = ref(cmsRouteActive.value);
 const closingEventPermissions = computed(() => page.props.auth?.closingEvent ?? {});
 const attendancePermissions = computed(() => page.props.auth?.attendance ?? {});
 const cmsPermissions = computed(() => page.props.auth?.cms ?? {});
+const employeeMasterPermissions = computed(() => page.props.auth?.employeeMasters ?? {});
 const canAccessAttendance = computed(() => attendancePermissions.value.canView ?? props.canViewAttendance);
+const canManageEmployeeMasters = computed(() => employeeMasterPermissions.value.canManage ?? props.canManageEmployeeMasters);
 const attendanceMenuLabel = computed(() => attendancePermissions.value.canManage ? 'Kelola Absensi' : 'Data Absensi');
 const kpiRouteActive = computed(() => page.url.startsWith('/dashboard/kpi'));
 const kpiPermissions = computed(() => page.props.auth?.kpi ?? {});
-const isExecutive = computed(() => ['dirut', 'direktur', 'direktur utama'].includes(String(props.user?.position || '').trim().toLowerCase()));
-const showIndividuGroup = computed(() => !isExecutive.value);
-const activePeriodId = computed(() => page.props.auth?.kpi?.activePeriodId ?? page.props.period?.id ?? null);
+const showIndividuGroup = computed(() => kpiPermissions.value.canViewPersonal === true);
+const showMpaMenu = computed(() => kpiPermissions.value.canAccessMpa === true);
 const showEmployeesMenu = computed(() => kpiPermissions.value.isSupervisor || kpiPermissions.value.isHrdOrAdmin);
-const showMpaMenu = computed(() => kpiPermissions.value.isMpaEvaluator || kpiPermissions.value.isHrdOrAdmin);
+const showKpiMenu = computed(() => showIndividuGroup.value || showEmployeesMenu.value || showMpaMenu.value || kpiPermissions.value.canManagePeriod === true || kpiPermissions.value.canViewPeriod === true);
+const activePeriodId = computed(() => page.props.period?.id ?? page.props.activePeriodId ?? page.props.auth?.kpi?.activePeriodId ?? null);
 
 const kpiIndividuRouteActive = computed(() => {
-    const url = page.url;
-    return url.startsWith('/dashboard/kpi/daily') ||
-        url.includes('/individual') ||
-        url.includes('/ops') ||
-        url.includes('/monthly') ||
-        url.includes('/nilai-akhir');
+    const path = page.url.split('?')[0];
+    return /^\/dashboard\/kpi\/daily(?:\/|$)/.test(path) ||
+        /^\/dashboard\/kpi\/period\/[^/]+\/(?:individual|ops|monthly|nilai-akhir)(?:\/|$)/.test(path);
 });
 const kpiExpanded = ref(kpiRouteActive.value);
 const kpiIndividuExpanded = ref(kpiIndividuRouteActive.value);
+
+const currentKpiEmployeeId = computed(() => {
+    // A direct click from another dashboard page should open the logged-in
+    // employee's own KPI context. Only an active employee KPI workspace may
+    // override it with the monitored employee from the current page.
+    if (!kpiIndividuRouteActive.value) return kpiPermissions.value.personalEmployeeId ?? null;
+
+    return page.props.monitoringEmployeeId
+        ?? page.props.employeeHeader?.id
+        ?? page.props.participant?.karyawan_id
+        ?? kpiPermissions.value.personalEmployeeId
+        ?? null;
+});
+const kpiIndividualHref = (key) => {
+    const periodId = activePeriodId.value;
+    const employeeId = currentKpiEmployeeId.value;
+
+    if (key === 'daily') {
+        return route('dashboard.kpi.daily', {
+            ...(periodId ? { period_id: periodId } : {}),
+            ...(employeeId ? { karyawan_id: employeeId } : {}),
+        });
+    }
+
+    if (!periodId) return route('dashboard.kpi.index');
+
+    return route(`dashboard.kpi.${key}`, {
+        period: periodId,
+        ...(employeeId ? { karyawan_id: employeeId } : {}),
+    });
+};
 
 const menuItems = [];
 
@@ -188,26 +218,26 @@ watch(
                 </div>
 
                 <!-- KPI Parent Navigation Menu -->
-                <div>
+                <div v-if="showKpiMenu">
                     <button type="button" :title="sidebarCollapsed ? 'KPI' : undefined" :data-tooltip="sidebarCollapsed ? 'KPI' : null" :aria-expanded="kpiExpanded" aria-controls="kpi-navigation" :class="[kpiRouteActive ? 'bg-blue-50 text-[#0756ba]' : 'text-[#4b5563] hover:bg-slate-100', sidebarCollapsed ? 'lg:justify-center lg:px-0' : '']" class="sidebar-tooltip flex h-11 w-full items-center gap-3 rounded-lg px-4 text-left text-sm font-semibold" @click="toggleParentMenu('kpi')">
                         <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16V4H4v16Z"/><path d="M8 16v-4m4 4V8m4 8v-6"/></svg>
                         <span :class="sidebarCollapsed ? 'lg:hidden' : ''">KPI</span>
                         <svg :class="[kpiExpanded ? 'rotate-180' : '', sidebarCollapsed ? 'lg:hidden' : '']" class="ml-auto h-4 w-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg>
                     </button>
                     <div v-show="kpiExpanded" id="kpi-navigation" :class="sidebarCollapsed ? 'lg:hidden' : ''" class="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3">
-                        <Link v-if="kpiPermissions.isHrdOrAdmin" :href="route('dashboard.kpi.index')" :class="route().current('dashboard.kpi.index') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Periode KPI</Link>
+                        <Link v-if="kpiPermissions.canManagePeriod || kpiPermissions.canViewPeriod" :href="route('dashboard.kpi.index')" :class="route().current('dashboard.kpi.index') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Periode KPI</Link>
                         <!-- Group 1: Individu -->
-                        <div v-if="showIndividuGroup" class="space-y-1">
+                        <div v-if="showIndividuGroup && activePeriodId" class="space-y-1">
                             <button type="button" class="flex w-full items-center justify-between px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-400" @click="kpiIndividuExpanded = !kpiIndividuExpanded">
                                 <span>Individu</span>
                                 <svg :class="[kpiIndividuExpanded ? 'rotate-180' : '']" class="h-3 w-3 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg>
                             </button>
                             <div v-show="kpiIndividuExpanded" class="ml-2 space-y-1 border-l border-slate-200 pl-2">
-                                <Link :href="route('dashboard.kpi.daily')" :class="route().current('dashboard.kpi.daily*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Daily Report</Link>
-                                <Link v-if="activePeriodId" :href="route('dashboard.kpi.individual', activePeriodId)" :class="route().current('dashboard.kpi.individual*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja Individu</Link>
-                                <Link v-if="activePeriodId" :href="route('dashboard.kpi.ops', activePeriodId)" :class="route().current('dashboard.kpi.ops*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja OPS</Link>
-                                <Link v-if="activePeriodId" :href="route('dashboard.kpi.monthly', activePeriodId)" :class="route().current('dashboard.kpi.monthly*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Monthly</Link>
-                                <Link v-if="activePeriodId" :href="route('dashboard.kpi.final', activePeriodId)" :class="route().current('dashboard.kpi.final*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Nilai Akhir</Link>
+                                <Link :href="kpiIndividualHref('daily')" :class="route().current('dashboard.kpi.daily*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Daily Report</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('individual')" :class="route().current('dashboard.kpi.individual*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja Individu</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('ops')" :class="route().current('dashboard.kpi.ops*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja OPS</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('monthly')" :class="route().current('dashboard.kpi.monthly*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Monthly</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('final')" :class="route().current('dashboard.kpi.final*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Nilai Akhir</Link>
                             </div>
                         </div>
 

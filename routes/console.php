@@ -1,8 +1,5 @@
 <?php
 
-use App\Actions\Employee\ResolveEmployeeAccountRole;
-use App\Actions\Employee\SyncEmployeeAccountRole;
-use App\Models\User;
 use App\Support\KpiClock;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -12,65 +9,16 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('employees:sync-account-roles {--apply : Terapkan perubahan role ke database}', function () {
-    $resolver = app(ResolveEmployeeAccountRole::class);
-    $synchronizer = app(SyncEmployeeAccountRole::class);
-    $apply = (bool) $this->option('apply');
-    $mismatches = 0;
-    $updated = 0;
-    $skipped = 0;
-
-    User::query()
-        ->with(['role:id,nama_role', 'karyawan.jabatan:id,nama_jabatan'])
-        ->orderBy('id')
-        ->each(function (User $account) use ($resolver, $synchronizer, $apply, &$mismatches, &$updated, &$skipped): void {
-            $employee = $account->karyawan;
-            $roleName = $resolver->handle($employee?->jabatan?->nama_jabatan);
-
-            if (! $employee || ! $roleName) {
-                $this->warn("Lewati akun {$account->username}: Karyawan/Jabatan tidak memiliki mapping role.");
-                $skipped++;
-
-                return;
-            }
-
-            if (mb_strtolower($account->role?->nama_role ?? '') === $roleName) {
-                return;
-            }
-
-            $mismatches++;
-            $this->line("{$account->username}: {$account->role?->nama_role} -> {$roleName}");
-
-            if ($apply && $synchronizer->handle($employee)) {
-                $updated++;
-            }
-        });
-
-    if (! $apply) {
-        $this->info("Dry run selesai: {$mismatches} akun perlu disinkronkan; {$skipped} akun dilewati.");
-        if ($mismatches > 0) {
-            $this->comment('Jalankan kembali dengan --apply untuk menerapkan perubahan.');
-        }
-
-        return;
-    }
-
-    $this->info("Sinkronisasi selesai: {$updated} akun diperbarui; {$skipped} akun dilewati.");
-})->purpose('Audit atau sinkronkan role akun dengan Jabatan Karyawan secara idempotent');
-
 Artisan::command('kpi:process-deadlines', function () {
     $now = KpiClock::now();
     \App\Models\KpiPeriod::query()->with('participants')->each(function ($period) use ($now): void {
         $next = $now->copy()->startOfMonth();
         foreach ($period->participants as $participant) {
-            // 1. MPA Evaluator Assignment Deadline: End of performance month (blocked if no evaluator by day 1 of next month)
-            if ($now->month === $period->bulan + 1 && ! $period->mpa_evaluator_id) {
-                // Period marked as blocked for normal assignment, HRD takeover required
-                $period->update(['status' => 'blocked']);
-            }
+            // Evaluator assignment is configuration, not a date gate. A
+            // participant becomes ready when its HRD initial data is saved.
 
             // 2a. KI uses the canonical KPI clock.
-            if ($now->day >= 3 && $now->month === $period->bulan + 1) {
+            if ($now->day >= 2 && $now->month === $period->bulan + 1) {
                 $score = \App\Models\KpiIndividualScore::firstOrCreate(['kpi_participant_id' => $participant->id]);
                 if ($score->status === 'draft') {
                     $score->update([
@@ -88,7 +36,7 @@ Artisan::command('kpi:process-deadlines', function () {
             // deadline, including the December rollover.
             $opsDeadline = \Carbon\Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
                 ->addMonthNoOverflow()
-                ->day(2)
+                ->startOfMonth()
                 ->endOfDay();
             if ($now->gte($opsDeadline)) {
                 $items = \App\Models\KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
@@ -117,7 +65,11 @@ Artisan::command('kpi:process-deadlines', function () {
                     ]);
                 }
             }
-            // 4. Auto-sign deadline: Tanggal 9 23:59 WIB for KI, KOPS, and Published Monthly
+            // 4. Normal signer deadlines are enforced by the approval
+            // endpoint. Do not create automatic signatures here: after a
+            // deadline the explicit Super Admin takeover must record the
+            // actual signer and source.
+            /*
             $autoSignDeadline = \Carbon\Carbon::create($period->tahun, $period->bulan, 9, 23, 59, 59, 'Asia/Jakarta')->addMonth();
             if ($now->gte($autoSignDeadline)) {
                 $ki = \App\Models\KpiIndividualScore::where('kpi_participant_id', $participant->id)->first();
@@ -195,6 +147,7 @@ Artisan::command('kpi:process-deadlines', function () {
                     }
                 }
             }
+            */
         }
     });
     $this->info('KPI deadline processing completed.');

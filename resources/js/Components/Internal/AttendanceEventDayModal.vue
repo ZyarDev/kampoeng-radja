@@ -2,7 +2,6 @@
 import Modal from "@/Components/Modal.vue";
 import { useForm } from "@inertiajs/vue3";
 import { computed, ref, watch } from "vue";
-import { useConfirmation } from "@/composables/useConfirmation";
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -12,8 +11,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["close"]);
-const { confirm } = useConfirmation();
 const searches = ref([]);
+const showSaveConfirmation = ref(false);
 const emptySchedule = () => ({ jam_masuk: "", member_ids: [] });
 const form = useForm({
     tanggal: props.attendanceDate,
@@ -37,6 +36,7 @@ const resetForm = () => {
 watch(
     () => props.show,
     (show) => {
+        showSaveConfirmation.value = false;
         if (show) resetForm();
     },
 );
@@ -101,15 +101,12 @@ const removeSchedule = (index) => {
     searches.value.splice(index, 1);
 };
 
-const submit = async () => {
-    const confirmed = await confirm({
-        type: props.attendanceDay.type === "event" ? "edit" : "save",
-        title: "Simpan Hari Event",
-        message:
-            "Apakah Anda yakin ingin menyimpan konfigurasi Hari Event ini?",
-        confirmText: "Ya, Simpan",
-    });
-    if (!confirmed) return;
+const submit = () => {
+    showSaveConfirmation.value = true;
+};
+
+const saveEventDay = () => {
+    showSaveConfirmation.value = false;
     form.put(route("admin.absensi.event-day.store"), {
         preserveScroll: true,
         onSuccess: () => emit("close"),
@@ -356,5 +353,55 @@ const submit = async () => {
                 </button>
             </footer>
         </form>
+
+        <div
+            v-if="showSaveConfirmation"
+            class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4"
+            role="presentation"
+            @click.self="showSaveConfirmation = false"
+        >
+            <section
+                class="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="event-day-confirmation-title"
+            >
+                <div class="flex items-start gap-4">
+                    <span
+                        class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-600"
+                        aria-hidden="true"
+                    >
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 8v5m0 3h.01" />
+                        </svg>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="event-day-confirmation-title" class="text-base font-bold text-slate-900">
+                            Simpan Hari Event
+                        </h2>
+                        <p class="mt-1.5 text-sm leading-6 text-slate-600">
+                            Apakah Anda yakin ingin menyimpan konfigurasi Hari Event ini?
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-2.5">
+                    <button
+                        type="button"
+                        class="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        @click="showSaveConfirmation = false"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        type="button"
+                        class="h-9 rounded-lg bg-emerald-600 px-4 text-xs font-semibold text-white hover:bg-emerald-700"
+                        @click="saveEventDay"
+                    >
+                        Ya, Simpan
+                    </button>
+                </div>
+            </section>
+        </div>
     </Modal>
 </template>
