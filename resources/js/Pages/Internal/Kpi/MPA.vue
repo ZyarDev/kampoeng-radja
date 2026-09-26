@@ -91,31 +91,31 @@ const rangeText = {
 const operationalDimension = {
     key: 'kinerja_operasional', label: 'Kinerja Operasional', description: 'Pencapaian target dan standar pekerjaan harian.',
     criteria: [
-        { ...rangeText.low, description: 'Di bawah rata-rata — pencapaian target dan standar pekerjaan harian.' },
-        { ...rangeText.standard, description: 'Mencapai target / standar — pencapaian target dan standar pekerjaan harian.' },
-        { ...rangeText.high, description: 'Luar biasa — pencapaian target dan standar pekerjaan harian.' },
+        { ...rangeText.low, description: `Kinerjanya dibawah rata- rata yang diharapkan atau standard. Pekerjaan harus diulangi. Mempunyai kesulitan untuk secara konsisten mempertahankan kinerja yang bisa diterima.` },
+        { ...rangeText.standard, description: `Secara konsisten mencapai target walaupun bekerja dibawah tekanan. Mempertahankan standard produktivitas. Bekerja dengan Tepat dan Akurat. Mampu meningkatkan kinerja walaupun dalam kondisi stress tanpa mengorbankan kualitas.` },
+        { ...rangeText.high, description: `Kinerjanya Luar biasa. Produktivitas dan kualitas kerjanya diatas target yang ditetapkan.` },
     ],
 };
 const generalDimensions = computed(() => [
     { key: 'sikap_kerja', label: 'Sikap Kerja', description: 'Antusiasme dan kesungguhan dalam bekerja.', criteria: [
-        { ...rangeText.low, description: 'Di bawah rata-rata — antusiasme dan kesungguhan dalam bekerja.' },
-        { ...rangeText.standard, description: 'Mencapai target / standar — antusiasme dan kesungguhan dalam bekerja.' },
-        { ...rangeText.high, description: 'Luar biasa — antusiasme dan kesungguhan dalam bekerja.' },
+        { ...rangeText.low, description: `Kurang bersemangat atau ragu-ragu untuk menyelesaikan pekerjaan atau/dan memberikan bantuan/ pelayanan. Mencari - cari alasan karena target tidak tercapai atau mudah menyerah apabila menghadapi hambatan.` },
+        { ...rangeText.standard, description: `Bersemangat untuk menyelesaikan pekerjaan dan/atau memberikan bantuan/pelayanan. Mencari solusi untuk mengatasi masalah.` },
+        { ...rangeText.high, description: `Menunjukkan antusiasme dan usaha lebih untuk menyelesaikan pekerjaan dan /atau memberikan bantuan/pelayanan. Secara pro aktif mencari solusi untuk mengatasi masalah.` },
     ] },
     { key: 'team_work', label: 'Team Work', description: 'Kerja sama dan kontribusi dalam tim.', criteria: [
-        { ...rangeText.low, description: 'Di bawah rata-rata — kerja sama dan kontribusi dalam tim.' },
-        { ...rangeText.standard, description: 'Mencapai target / standar — kerja sama dan kontribusi dalam tim.' },
-        { ...rangeText.high, description: 'Luar biasa — kerja sama dan kontribusi dalam tim.' },
+        { ...rangeText.low, description: `Kurang membina relasi yang sopan dan produktif dengan rekan kerja. Lebih mementingkan diri sendiri dari pada Team. Menempatkan kepentingan pribadi diatas kepentingan kelompok sehingga mempengaruhi pencapaian tujuan organisasi.` },
+        { ...rangeText.standard, description: `Membina relasi yang sopan dan saling menghargai dengan rekan kerja. Bersedia menawarkan bantuan & dukungan. Bertindak sebagai anggota Team yang dapat diandalkan dan memberikan kontribusi terhadap pencapaian keberhasilan Team.` },
+        { ...rangeText.high, description: `Fokus pada keberhasilan organisasi diatas keberhasilan pribadi. Mengutamakan efektivitas, kebersamaan dan morale Team. Dapat dijadikan teladan bagi team nya.` },
     ] },
     { key: 'inisiatif', label: 'Inisiatif', description: 'Inisiatif dan sikap proaktif dalam menyelesaikan masalah.', criteria: [
-        { ...rangeText.low, description: 'Di bawah rata-rata — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
-        { ...rangeText.standard, description: 'Mencapai target / standar — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
-        { ...rangeText.high, description: 'Luar biasa — inisiatif dan sikap proaktif dalam menyelesaikan masalah.' },
+        { ...rangeText.low, description: `Pasif; kurang ada inisiatif, perhatian yang terbatas dan tidak mengenali masalah yang potensial.` },
+        { ...rangeText.standard, description: `Cepat memberikan response terhadap pelayanan. Mengenali potensi masalah dari pekerjaannya. Berupaya mencari alternative pemecahan masalah.` },
+        { ...rangeText.high, description: `Proaktif dan berupaya untuk menyiapkan solusi untuk masalah yang potensial. Memberikan bantuan dalam mencari pemecahan masalah.` },
     ] },
     ...(props.hasSubordinatesSnapshot ? [{ key: 'kepemimpinan', label: 'Kepemimpinan / Potensi Kepemimpinan', description: 'Kemampuan memengaruhi dan mengarahkan.', criteria: [
-        { ...rangeText.low, description: 'Di bawah rata-rata — kemampuan memengaruhi dan mengarahkan.' },
-        { ...rangeText.standard, description: 'Mencapai target / standar — kemampuan memengaruhi dan mengarahkan.' },
-        { ...rangeText.high, description: 'Luar biasa — kemampuan memengaruhi dan mengarahkan.' },
+        { ...rangeText.low, description: `Kurang mampu atau lemah didalam mengarahkan, mempengaruhi atau memotivasi anak buahnya untuk mencapai keberhasilan organisasi.` },
+        { ...rangeText.standard, description: `Mampu mengarahkan, mempengaruhi atau memotivasi anak buahnya untuk mencapai keberhasilan organisasi.` },
+        { ...rangeText.high, description: `Menunjukkan kemampuan yang tinggi atau dapat dijadikan teladan didalam mengarahkan, mempengaruhi atau memotivasi anak buahnya untuk mencapai tujuan organisasi.` },
     ] }] : []),
 ]);
 const allDimensions = computed(() => [operationalDimension, ...generalDimensions.value]);

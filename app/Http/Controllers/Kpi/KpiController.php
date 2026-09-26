@@ -23,7 +23,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Maatwebsite\Excel\Facades\Excel;
 
 class KpiController extends Controller
 {
@@ -90,7 +89,12 @@ class KpiController extends Controller
         $safeName = preg_replace('/[^A-Za-z0-9_-]+/', '_', trim($employee->nama)) ?: 'Karyawan';
         $filename = sprintf('KPI_%s_%s_%s.xlsx', $safeName, $months[(int) $period->bulan - 1] ?? $period->bulan, $period->tahun);
 
-        return Excel::download(new EmployeeKpiExport($period, $employee->id), $filename);
+        $export = new EmployeeKpiExport($period, $employee->id);
+        $temporaryFile = $export->save();
+
+        return response()->download($temporaryFile, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend(true);
     }
 
     /**
@@ -1404,7 +1408,7 @@ class KpiController extends Controller
                     'jumlah' => $item->jumlah,
                     'nilai' => $item->nilai,
                 ])->values() ?? [],
-                'attendance_score' => $monthly?->attendance_score,
+                'attendance_score' => $this->resolvedMonthlyAttendanceScore($monthly),
                 'reward_punishment_score' => $monthly?->reward_punishment_score,
             ],
             'summary' => $summary,
@@ -1450,6 +1454,20 @@ class KpiController extends Controller
             && $monthly->completed_at
             && ! is_null($monthly->attendance_score)
             && ! is_null($monthly->reward_punishment_score));
+    }
+
+    /**
+     * The legacy column default is zero, but a completed HRD record with no
+     * adjustment means the untouched attendance baseline: 5 points.
+     */
+    private function resolvedMonthlyAttendanceScore(?KpiMonthly $monthly): ?float
+    {
+        if (! $monthly || ! $monthly->completed_at) return null;
+        $adjustments = $monthly->relationLoaded('attendanceAdjustments')
+            ? $monthly->attendanceAdjustments
+            : $monthly->attendanceAdjustments()->get();
+        if ($adjustments->isEmpty() && (float) $monthly->attendance_score === 0.0) return 5.0;
+        return $monthly->attendance_score === null ? null : (float) $monthly->attendance_score;
     }
 
     /**
@@ -1545,7 +1563,7 @@ class KpiController extends Controller
                     'mpa_score' => $monthly->mpa_score,
                     'performance' => $monthly->performance,
                     'coaching' => $monthly->coaching,
-                    'attendance_score' => $monthly->attendance_score,
+                    'attendance_score' => $this->resolvedMonthlyAttendanceScore($monthly),
                     'reward_punishment_score' => $monthly->reward_punishment_score,
                     'adjustments' => $monthly->attendanceAdjustments,
                     'rewards' => $monthly->rewardPunishments,
@@ -1595,7 +1613,7 @@ class KpiController extends Controller
                     'departemen' => $m->participant?->departemen_snapshot,
                     'status' => $m->status,
                     'mpa_score' => $m->mpa_score,
-                    'attendance_score' => $m->attendance_score,
+                    'attendance_score' => $this->resolvedMonthlyAttendanceScore($m),
                     'reward_punishment_score' => $m->reward_punishment_score,
                     'adjustments' => $m->attendanceAdjustments,
                     'rewards' => $m->rewardPunishments,
@@ -1871,7 +1889,7 @@ class KpiController extends Controller
             $kiScore = (float) ($ki?->score ?? 0);
             $opsScore = (float) round($opsItems->sum('nilai_item'), 2);
             $mpaScore = (float) ($monthly?->mpa_score ?? 0);
-            $attScore = (float) ($monthly?->attendance_score ?? 0);
+            $attScore = (float) ($this->resolvedMonthlyAttendanceScore($monthly) ?? 0);
             $rpScore = (float) ($monthly?->reward_punishment_score ?? 0);
 
             // Intermediate calculation (precise desimal)
@@ -1900,12 +1918,17 @@ class KpiController extends Controller
                 && in_array($monthly->status, ['completed', 'published'], true)
                 && ! is_null($monthly->completed_at)
                 && ! is_null($monthly->mpa_score)
-                && ! is_null($monthly->attendance_score)
+                && ! is_null($this->resolvedMonthlyAttendanceScore($monthly))
                 && $monthlySignaturesComplete;
 
             $isReady = $isKiReady && $isOpsReady && $isMonthlyReady;
 
             $record = KpiFinalScore::where('kpi_participant_id', $p->id)->first();
+
+            // A completed final-score record was only created after all
+            // readiness prerequisites passed. Preserve that workflow state
+            // when the page is reopened through an employee-context route.
+            $isReady = $isReady || $record?->status === 'completed';
 
             if ($isReady) {
                 if (! $record) {
@@ -1937,13 +1960,19 @@ class KpiController extends Controller
                 }
             }
 
-            // Signature status
-            $finalSignature = $record ? KpiSignature::where('signable_type', KpiFinalScore::class)
+            // Keep employee signature separate from an already-signed
+            // supervisor signature so the employee action is not hidden.
+            $finalSignatures = $record ? KpiSignature::where('signable_type', KpiFinalScore::class)
                 ->where('signable_id', $record->id)
                 ->whereIn('role', ['employee', 'atasan_langsung'])
-                ->orderByRaw("CASE WHEN role = 'employee' THEN 0 ELSE 1 END")
-                ->latest('signed_at')
-                ->first() : null;
+                ->orderByDesc('signed_at')
+                ->get() : collect();
+            $employeeSignature = $finalSignatures->firstWhere('role', 'employee');
+            $finalSignature = $employeeSignature ?: $finalSignatures->first();
+            $canSignEmployee = $isReady
+                && ! $employeeSignature
+                && (int) $user->karyawan_id === (int) $p->karyawan_id
+                && ! $now->gt($this->finalApprovalDeadline($period));
 
             $finalScores[] = [
                 'id' => $record?->id,
@@ -1957,10 +1986,40 @@ class KpiController extends Controller
                 'mpa_score' => $mpaScore,
                 'attendance_score' => $attScore,
                 'reward_punishment_score' => $rpScore,
+                'mpa_dimensions' => [
+                    'capaian_departemen' => $ki?->capaian_departemen,
+                    'perawatan_aset' => $ki?->perawatan_aset,
+                    'kebersihan_kerapihan' => $ki?->kebersihan_kerapihan,
+                    'kinerja_operasional' => $monthly?->kinerja_operasional,
+                    'sikap_kerja' => $monthly?->sikap_kerja,
+                    'team_work' => $monthly?->team_work,
+                    'inisiatif' => $monthly?->inisiatif,
+                    'kepemimpinan' => $monthly?->kepemimpinan,
+                    'performance' => $monthly?->performance,
+                    'coaching' => $monthly?->coaching,
+                ],
+                'attendance_adjustments' => $monthly?->attendanceAdjustments?->map(fn ($item) => [
+                    'kode' => $item->kode,
+                    'jumlah' => $item->jumlah,
+                ])->values() ?? [],
+                'ops_items' => $opsItems->map(fn (KpiOpsItem $item) => [
+                    'id' => $item->id,
+                    'kpi_item' => $item->kpi_item,
+                    'maintenance' => $item->maintenance,
+                    'target_unit' => $item->target_unit,
+                    'tanda' => $item->tanda,
+                    'beban_target' => $item->beban_target,
+                    'frekuensi' => $item->frekuensi,
+                    'hasil' => $item->hasil,
+                    'aktivitas' => $item->aktivitas,
+                    'nilai_item' => $item->nilai_item,
+                ])->values(),
                 'score' => $record?->score ?? $totalScoreFinal,
                 'kategori' => $record?->kategori ?? $kategori,
                 'is_ready' => $isReady,
                 'status' => $record?->status ?? 'pending',
+                'employee_signed' => (bool) $employeeSignature,
+                'can_sign_employee' => $canSignEmployee,
                 'late_finalization' => (bool) ($record?->late_finalization ?? $isLateFinalization),
                 'signature' => $finalSignature ? [
                     'role' => $finalSignature->role,
@@ -2106,6 +2165,7 @@ class KpiController extends Controller
         } elseif ($v['signable_type'] === 'final_score') {
             $participant = $record->participant()->with(['period'])->first();
             $period = $participant->period;
+            abort_unless($record->status === 'completed', 422, 'Nilai Akhir belum siap ditandatangani.');
             $withinDeadline = ! KpiClock::now()->gt($this->finalApprovalDeadline($period));
             if ((int) $user->karyawan_id === (int) $participant->karyawan_id && $withinDeadline) {
                 $v['role'] = 'employee';
@@ -2196,6 +2256,7 @@ class KpiController extends Controller
 
         $period = KpiPeriod::findOrFail($v['period_id']);
         $participant = KpiParticipant::findOrFail($v['participant_id']);
+        abort_unless((int) $participant->kpi_period_id === (int) $period->id, 422, 'Peserta tidak berada pada periode yang dipilih.');
 
         DB::transaction(function () use ($period, $participant, $v, $user) {
             $beforeData = [];
@@ -2223,12 +2284,18 @@ class KpiController extends Controller
                 $opsItems = KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
                 $beforeData = $opsItems->toArray();
 
-                if (isset($v['payload']['items']) && is_array($v['payload']['items'])) {
-                    foreach ($v['payload']['items'] as $itemData) {
+                $correctionItems = $v['payload']['ops_items'] ?? $v['payload']['items'] ?? null;
+                if (is_array($correctionItems)) {
+                    foreach ($correctionItems as $itemData) {
                         if (isset($itemData['id'])) {
                             $item = KpiOpsItem::where('kpi_participant_id', $participant->id)->find($itemData['id']);
                             if ($item) {
-                                $item->update([
+                        $item->update([
+                                    'maintenance' => $itemData['maintenance'] ?? $item->maintenance,
+                                    'target_unit' => isset($itemData['target_unit']) ? (float) $itemData['target_unit'] : $item->target_unit,
+                                    'tanda' => $itemData['tanda'] ?? $item->tanda,
+                                    'beban_target' => isset($itemData['beban_target']) ? (float) $itemData['beban_target'] : $item->beban_target,
+                                    'frekuensi' => $itemData['frekuensi'] ?? $item->frekuensi,
                                     'hasil' => $itemData['hasil'] ?? $item->hasil,
                                     'aktivitas' => $itemData['aktivitas'] ?? $item->aktivitas,
                                     'nilai_item' => isset($itemData['nilai_item']) ? (float)$itemData['nilai_item'] : $item->nilai_item,
@@ -2268,21 +2335,38 @@ class KpiController extends Controller
                         'performance' => $v['payload']['performance'] ?? $monthly->performance,
                         'coaching' => $v['payload']['coaching'] ?? $monthly->coaching,
                     ]);
+
+                    $rateMap = ['P1' => 0.5, 'DL' => 0.3, 'PC' => 0.3, 'LC' => 0.3, 'M' => 3.0];
+                    if (array_key_exists('attendance_adjustments', $v['payload']) && is_array($v['payload']['attendance_adjustments'])) {
+                        $monthly->attendanceAdjustments()->delete();
+                        $totalDeduction = 0.0;
+                        foreach ($v['payload']['attendance_adjustments'] as $adjustment) {
+                            $kode = $adjustment['kode'] ?? null;
+                            $jumlah = max(0, (int) ($adjustment['jumlah'] ?? 0));
+                            if (! $kode || ! array_key_exists($kode, $rateMap) || $jumlah === 0) continue;
+                            $nilai = $rateMap[$kode] * $jumlah;
+                            $totalDeduction += $nilai;
+                            $monthly->attendanceAdjustments()->create(['kode' => $kode, 'jumlah' => $jumlah, 'nilai' => $nilai]);
+                        }
+                        $monthly->update(['attendance_score' => round((10 - $totalDeduction) * 0.5, 2)]);
+                    }
                 }
                 $afterData = $monthly->fresh()->toArray();
             }
 
             // Get last revision number
-            $lastRev = KpiAudit::where('kpi_period_id', $period->id)->max('revision') ?? 0;
+            $lastRev = DB::table('kpi_audits')->where('kpi_period_id', $period->id)->max('revision') ?? 0;
 
-            KpiAudit::create([
+            DB::table('kpi_audits')->insert([
                 'kpi_period_id' => $period->id,
                 'actor_id' => $user->id,
                 'action' => "Koreksi Administratif {$v['component']} Peserta #{$participant->id}",
                 'reason' => $v['reason'],
-                'before' => $beforeData,
-                'after' => $afterData,
+                'before' => json_encode($beforeData),
+                'after' => json_encode($afterData),
                 'revision' => $lastRev + 1,
+                'created_at' => KpiClock::now(),
+                'updated_at' => KpiClock::now(),
             ]);
 
             // Recalculate Final Score dependent value
@@ -2291,7 +2375,7 @@ class KpiController extends Controller
             $opsScore = (float) round($opsItems->sum('nilai_item'), 2);
             $m = KpiMonthly::where('kpi_participant_id', $participant->id)->first();
             $mpaScore = (float) ($m?->mpa_score ?? 0);
-            $attScore = (float) ($m?->attendance_score ?? 0);
+            $attScore = (float) ($this->resolvedMonthlyAttendanceScore($m) ?? 0);
             $rpScore = (float) ($m?->reward_punishment_score ?? 0);
 
             $totalScoreFinal = round($kiScore + $opsScore + $mpaScore + $attScore + $rpScore, 2);
@@ -2602,7 +2686,10 @@ class KpiController extends Controller
             $finalDone = (bool) ($finalReady && $finalEmployeeSigned);
             if ($finalDone) $stageCounts['final']++;
             if ($dailyComplete && $individualDone && $opsDone && $mpaDone && $monthlyDone && $finalDone) $finalCompleteCount++;
-            $finalLabel = ! $finalReady ? 'Belum Siap' : ($finalDone ? number_format((float) $final->score, 2).' · Selesai' : 'Menunggu TTD');
+            // Monitoring displays the final score value itself; the table
+            // already has a separate workflow context through the waiting
+            // and problem columns, so do not append a redundant status label.
+            $finalLabel = ! $finalReady ? 'Belum Siap' : ($finalDone ? number_format((float) $final->score, 0) : 'Menunggu TTD');
             $category = $finalDone ? ($final->kategori ?: '—') : '—';
 
             $waiting = 'Selesai';

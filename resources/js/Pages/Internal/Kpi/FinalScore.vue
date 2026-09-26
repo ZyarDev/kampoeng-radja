@@ -15,7 +15,7 @@ const props = defineProps({
   employeePeriods: { type: Array, default: () => [] },
 });
 
-const { confirmAction } = useConfirmation();
+const { confirm } = useConfirmation();
 const scoreRecordLabel = (score) => score.signature?.source === 'super_admin_takeover'
   ? 'Dialihkan Super Admin'
   : (score.signature?.role === 'employee' ? 'Disetujui Karyawan' : 'Disetujui Atasan');
@@ -51,6 +51,14 @@ const correctionForm = useForm({
     kepemimpinan: 35,
     performance: '',
     coaching: '',
+    attendance_adjustments: [
+      { kode: 'P1', jumlah: 0 },
+      { kode: 'DL', jumlah: 0 },
+      { kode: 'PC', jumlah: 0 },
+      { kode: 'LC', jumlah: 0 },
+      { kode: 'M', jumlah: 0 },
+    ],
+    ops_items: [],
   },
 });
 
@@ -58,11 +66,35 @@ const openCorrection = (s) => {
   selectedScore.value = s;
   correctionForm.participant_id = s.participant_id;
   correctionForm.reason = '';
+  correctionForm.payload = {
+    ...correctionForm.payload,
+    capaian_departemen: s.mpa_dimensions?.capaian_departemen == null ? 80 : Math.round(Number(s.mpa_dimensions.capaian_departemen)),
+    perawatan_aset: s.mpa_dimensions?.perawatan_aset == null ? 80 : Math.round(Number(s.mpa_dimensions.perawatan_aset)),
+    kebersihan_kerapihan: s.mpa_dimensions?.kebersihan_kerapihan == null ? 80 : Math.round(Number(s.mpa_dimensions.kebersihan_kerapihan)),
+    kinerja_operasional: s.mpa_dimensions?.kinerja_operasional ?? 35,
+    sikap_kerja: s.mpa_dimensions?.sikap_kerja ?? 35,
+    team_work: s.mpa_dimensions?.team_work ?? 35,
+    inisiatif: s.mpa_dimensions?.inisiatif ?? 35,
+    kepemimpinan: s.mpa_dimensions?.kepemimpinan ?? 35,
+    performance: s.mpa_dimensions?.performance ?? '',
+    coaching: s.mpa_dimensions?.coaching ?? '',
+    attendance_adjustments: [
+      { kode: 'P1', jumlah: 0 }, { kode: 'DL', jumlah: 0 }, { kode: 'PC', jumlah: 0 },
+      { kode: 'LC', jumlah: 0 }, { kode: 'M', jumlah: 0 },
+    ].map((row) => ({ ...row, jumlah: s.attendance_adjustments?.find((item) => item.kode === row.kode)?.jumlah ?? 0 })),
+    ops_items: (s.ops_items || []).map((item) => ({
+      ...item,
+      target_unit: item.target_unit == null ? null : Number(item.target_unit),
+      beban_target: item.beban_target == null ? null : Number(item.beban_target),
+      hasil: item.hasil == null ? null : Number(item.hasil),
+      nilai_item: item.nilai_item == null ? null : Number(item.nilai_item),
+    })),
+  };
   isCorrectionOpen.value = true;
 };
 
 const submitCorrection = async () => {
-  const confirmed = await confirmAction({
+  const confirmed = await confirm({
     title: 'Konfirmasi Koreksi Administratif',
     message: 'Apakah Anda yakin ingin melakukan koreksi administratif? Tindakan ini akan mencatat histori revisi dan menghitung ulang Nilai Akhir.',
     confirmText: 'Ya, Terapkan Koreksi',
@@ -79,7 +111,7 @@ const submitCorrection = async () => {
 
 // Sign Component Modal/Trigger
 const handleSign = async (scoreRecord) => {
-  const confirmed = await confirmAction({
+  const confirmed = await confirm({
     title: 'Tanda Tangan Nilai Akhir',
     message: 'Tandatangani dokumen Nilai Akhir ini sebagai bagian dari penyelesaian proses KPI.',
     confirmText: 'Tandatangani',
@@ -89,7 +121,7 @@ const handleSign = async (scoreRecord) => {
     router.post(route('dashboard.kpi.sign'), {
       signable_type: 'final_score',
       signable_id: scoreRecord.id,
-      role: 'atasan_langsung',
+      role: 'employee',
     });
   }
 };
@@ -143,25 +175,13 @@ const handleSign = async (scoreRecord) => {
                   </span>
                 </td>
                 <td class="px-4 py-4 text-center">
-                  <div v-if="s.signature" class="inline-flex flex-col items-center">
-                    <span v-if="s.signature.source === 'manual'" class="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                      </svg>
-                      {{ scoreRecordLabel(s) }}
-                    </span>
-                    <span v-else class="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                      Ditandatangani Otomatis oleh Sistem
-                    </span>
-                  </div>
-                  <button
-                    v-else-if="s.is_ready"
-                    @click="handleSign(s)"
-                    class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
-                  >
-                    Tanda Tangan Nilai Akhir
-                  </button>
-                  <span v-else class="text-xs text-slate-400 italic">Belum Lengkap</span>
+                  <span v-if="s.employee_signed" class="inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    Sudah Ditandatangani
+                  </span>
+                  <span v-else-if="s.is_ready" class="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                    Belum Ditandatangani
+                  </span>
+                  <span v-else class="text-xs italic text-slate-400">Belum Lengkap</span>
                 </td>
                 <td class="px-4 py-4 text-right" v-if="user.roleName === 'super_admin'">
                   <button
@@ -198,20 +218,20 @@ const handleSign = async (scoreRecord) => {
         </div>
       </section>
 
-      <section v-if="monitoringEmployeeId && scores[0] && !scores[0].signature" class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+      <section v-if="monitoringEmployeeId && scores[0] && !scores[0].employee_signed" class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
         <div class="flex items-center justify-between gap-3">
           <div>
             <h2 class="text-base font-bold text-[#173f82]">Tanda Tangan Karyawan</h2>
             <p class="mt-1 text-xs text-[#52709d]">Tanda tangan dilakukan setelah seluruh signature Monthly yang berlaku selesai.</p>
           </div>
-          <button v-if="scores[0].is_ready" type="button" @click="handleSign(scores[0])" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Tanda Tangan Nilai Akhir</button>
+          <button v-if="scores[0].can_sign_employee" type="button" @click="handleSign(scores[0])" class="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700">Tanda Tangan Nilai Akhir</button>
           <span v-else class="rounded-md bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">Menunggu Monthly lengkap</span>
         </div>
       </section>
 
       <!-- Correction Modal -->
       <div v-if="isCorrectionOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-        <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-slate-100">
+        <div class="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl border border-slate-100">
           <h3 class="text-lg font-bold text-slate-900">Koreksi Administratif KPI</h3>
           <p class="text-xs text-slate-500 mt-1">
             Peserta: <span class="font-semibold text-slate-700">{{ selectedScore?.nama }}</span>
@@ -222,6 +242,7 @@ const handleSign = async (scoreRecord) => {
               <label class="block text-xs font-medium text-slate-700">Komponen Diubah</label>
               <select v-model="correctionForm.component" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                 <option value="kinerja_individu">Kinerja Individu (KI)</option>
+                <option value="kinerja_ops">Kinerja OPS</option>
                 <option value="mpa">Penilaian MPA</option>
               </select>
             </div>
@@ -229,16 +250,30 @@ const handleSign = async (scoreRecord) => {
             <div v-if="correctionForm.component === 'kinerja_individu'" class="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
               <div>
                 <label class="block text-xs font-medium text-slate-600">Capaian Departemen (1-100)</label>
-                <input v-model.number="correctionForm.payload.capaian_departemen" type="number" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
+                <input v-model.number="correctionForm.payload.capaian_departemen" type="number" step="1" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600">Perawatan Aset (1-100)</label>
-                <input v-model.number="correctionForm.payload.perawatan_aset" type="number" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
+                <input v-model.number="correctionForm.payload.perawatan_aset" type="number" step="1" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-medium text-slate-600">Kebersihan/Kerapihan (1-100)</label>
-                <input v-model.number="correctionForm.payload.kebersihan_kerapihan" type="number" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
+                <input v-model.number="correctionForm.payload.kebersihan_kerapihan" type="number" step="1" min="0" max="100" class="mt-1 w-full rounded border-slate-300 text-sm" />
               </div>
+            </div>
+
+            <div v-if="correctionForm.component === 'kinerja_ops'" class="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+              <p class="text-xs font-semibold text-slate-600">Item Kinerja OPS</p>
+              <div v-for="(item, index) in correctionForm.payload.ops_items" :key="item.id" class="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                <div class="text-xs font-semibold text-slate-700">{{ item.kpi_item || `Item ${index + 1}` }}</div>
+                <input v-model="item.maintenance" type="text" placeholder="Maintenance" class="w-full rounded border-slate-300 text-sm" />
+                <div class="grid grid-cols-2 gap-2">
+                  <input v-model.number="item.hasil" type="number" step="1" placeholder="Hasil" class="rounded border-slate-300 text-sm" />
+                  <input v-model.number="item.nilai_item" type="number" step="1" placeholder="Nilai" class="rounded border-slate-300 text-sm" />
+                </div>
+                <textarea v-model="item.aktivitas" rows="2" placeholder="Aktivitas pencapaian" class="w-full rounded border-slate-300 text-sm"></textarea>
+              </div>
+              <p v-if="!correctionForm.payload.ops_items.length" class="text-xs text-slate-400">Belum ada parameter Kinerja OPS untuk peserta ini.</p>
             </div>
 
             <div v-if="correctionForm.component === 'mpa'" class="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -250,6 +285,25 @@ const handleSign = async (scoreRecord) => {
                 <label class="block text-xs font-medium text-slate-600">Sikap Kerja (1-45)</label>
                 <input v-model.number="correctionForm.payload.sikap_kerja" type="number" min="1" max="45" class="mt-1 w-full rounded border-slate-300 text-sm" />
               </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600">Team Work (1-45)</label>
+                <input v-model.number="correctionForm.payload.team_work" type="number" min="1" max="45" class="mt-1 w-full rounded border-slate-300 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-slate-600">Inisiatif (1-45)</label>
+                <input v-model.number="correctionForm.payload.inisiatif" type="number" min="1" max="45" class="mt-1 w-full rounded border-slate-300 text-sm" />
+              </div>
+              <div v-if="selectedScore?.mpa_dimensions?.kepemimpinan !== null && selectedScore?.mpa_dimensions?.kepemimpinan !== undefined">
+                <label class="block text-xs font-medium text-slate-600">Kepemimpinan (1-45)</label>
+                <input v-model.number="correctionForm.payload.kepemimpinan" type="number" min="1" max="45" class="mt-1 w-full rounded border-slate-300 text-sm" />
+              </div>
+              <div v-for="adjustment in correctionForm.payload.attendance_adjustments" :key="adjustment.kode" class="flex items-center gap-2">
+                <label class="w-16 text-xs font-medium text-slate-600">{{ adjustment.kode }}</label>
+                <input v-model.number="adjustment.jumlah" type="number" min="0" step="1" class="w-24 rounded border-slate-300 text-sm" />
+                <span class="text-xs text-slate-500">jumlah hari</span>
+              </div>
+              <textarea v-model="correctionForm.payload.performance" rows="2" placeholder="Penjelasan performance" class="w-full rounded border-slate-300 text-sm"></textarea>
+              <textarea v-model="correctionForm.payload.coaching" rows="2" placeholder="Rencana perbaikan / coaching" class="w-full rounded border-slate-300 text-sm"></textarea>
             </div>
 
             <div>
