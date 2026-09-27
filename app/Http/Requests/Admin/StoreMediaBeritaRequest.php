@@ -19,8 +19,13 @@ class StoreMediaBeritaRequest extends FormRequest
         return [
             'judul' => ['required', 'string', 'max:150'],
             'deskripsi' => ['required', 'string', 'max:250'],
-            'foto' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'foto' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('cms_uploads.media_berita.max_kb')],
             'tanggal_publish' => ['required', 'date'],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['foto.max' => 'Ukuran gambar Media & Berita maksimal 20 MB.'];
     }
 }

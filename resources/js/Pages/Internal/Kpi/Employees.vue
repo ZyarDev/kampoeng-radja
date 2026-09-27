@@ -7,6 +7,7 @@ const props = defineProps({
     user: Object,
     period: Object,
     currentPeriodId: Number,
+    periods: { type: Array, default: () => [] },
     participants: Array,
     hierarchy: Array,
 });
@@ -31,6 +32,7 @@ const periodLabel = computed(
     () =>
         `${monthNames[(props.period?.bulan || 1) - 1]} ${props.period?.tahun || ""}`,
 );
+const changePeriod = (event) => router.get(route('dashboard.kpi.employees', event.target.value), {}, { preserveState: false, preserveScroll: true, replace: true });
 const filterMembers = (members) =>
     (members || []).filter((p) => {
         const q = search.value.trim().toLowerCase();
@@ -240,17 +242,16 @@ const bulkApprove = async (group) => {
                 <div
                     class="flex flex-col gap-3 rounded-xl border border-[#dce5f1] bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                    <p class="text-sm text-slate-500">
-                        Periode performa:
-                        <strong class="text-[#173467]">{{
-                            periodLabel
-                        }}</strong>
-                    </p>
+                    <label class="text-xs font-semibold text-[#5273a8] sm:w-64">Periode KPI
+                        <select class="mt-1 h-10 w-full rounded-lg border-[#d5deea] bg-white text-sm font-semibold text-[#173467]" :value="period?.id" @change="changePeriod">
+                            <option v-for="item in periods" :key="item.id" :value="item.id">{{ monthNames[Number(item.bulan) - 1] || item.bulan }} {{ item.tahun }} · {{ item.status === 'draft' ? 'Persiapan' : 'Aktif' }}</option>
+                        </select>
+                    </label>
                     <input
                         v-model="search"
                         type="search"
                         placeholder="Cari nama, NIK, atau jabatan..."
-                        class="h-10 w-full rounded-lg border-[#d5deea] text-sm sm:w-80"
+                        class="h-10 w-full rounded-lg border-[#d5deea] text-sm sm:ml-auto sm:w-80"
                     />
                 </div>
                 <section

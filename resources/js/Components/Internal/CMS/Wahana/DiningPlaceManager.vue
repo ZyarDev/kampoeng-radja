@@ -2,6 +2,7 @@
 import { router, useForm } from '@inertiajs/vue3';
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { useConfirmation } from '@/composables/useConfirmation';
+import { CMS_UPLOAD_LIMITS, validateUploadFiles } from '@/utils/cmsUploadValidation';
 
 const props = defineProps({
     items: { type: Array, required: true },
@@ -13,6 +14,7 @@ const modal = ref(null);
 const nameInput = ref(null);
 const existingPhotos = ref([]);
 const newPhotos = ref([]);
+const localPhotoError = ref(null);
 const fileInputKey = ref(0);
 const form = useForm({
     nama: '',
@@ -32,7 +34,7 @@ const form = useForm({
     menu_highlights: [''],
 });
 
-const photoError = computed(() => form.errors.fotos
+const photoError = computed(() => localPhotoError.value || form.errors.fotos
     || Object.entries(form.errors).find(([key]) => key.startsWith('fotos.'))?.[1]
     || form.errors.existing_photo_order);
 
@@ -42,6 +44,7 @@ const revokeNewPhotos = () => {
 };
 
 const openModal = async (item = null) => {
+    localPhotoError.value = null;
     revokeNewPhotos();
     form.reset();
     form.clearErrors();
@@ -75,6 +78,7 @@ const openModal = async (item = null) => {
 };
 
 const closeModal = () => {
+    localPhotoError.value = null;
     modal.value = null;
     existingPhotos.value = [];
     revokeNewPhotos();
@@ -84,6 +88,9 @@ const closeModal = () => {
 
 const selectPhotos = (event) => {
     const files = Array.from(event.target.files || []);
+    const combined = [...newPhotos.value.map((photo) => photo.file), ...files];
+    localPhotoError.value = validateUploadFiles(combined, CMS_UPLOAD_LIMITS.dining, 'foto Tempat Makan');
+    if (localPhotoError.value) { event.target.value = ''; return; }
     newPhotos.value.push(...files.map((file, index) => ({
         key: `${Date.now()}-${index}-${file.name}`,
         file,
@@ -105,6 +112,7 @@ const removeNewPhoto = (index) => {
     const [photo] = newPhotos.value.splice(index, 1);
     if (photo) URL.revokeObjectURL(photo.url);
     form.fotos = newPhotos.value.map((item) => item.file);
+    localPhotoError.value = validateUploadFiles(form.fotos, CMS_UPLOAD_LIMITS.dining, 'foto Tempat Makan');
 };
 const addMenuHighlight = () => form.menu_highlights.push('');
 const removeMenuHighlight = (index) => {
@@ -220,7 +228,7 @@ onBeforeUnmount(revokeNewPhotos);
 
                         <div>
                             <label class="block text-xs font-bold text-slate-700">Galeri Foto {{ modal.item ? '' : '*' }}<input :key="fileInputKey" type="file" multiple accept="image/jpeg,image/png,image/webp" class="mt-2 block w-full rounded-lg border border-slate-300 px-3 py-2 text-xs file:mr-2 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-bold file:text-[#0756d8]" :required="!modal.item && !newPhotos.length" @change="selectPhotos" /></label>
-                            <p class="mt-2 text-[10px] leading-4 text-slate-500">JPG, PNG, atau WebP. Maksimal 5 MB per foto. Foto teratas menjadi cover.</p><p v-if="photoError" class="mt-2 text-xs text-red-600">{{ photoError }}</p>
+                            <p class="mt-2 text-[10px] leading-4 text-slate-500">JPG, JPEG, PNG, atau WebP • Maks. 10 MB per foto • Maks. total 30 MB • Disarankan 1200 × 800 px (3:2). Foto teratas menjadi cover.</p><p v-if="photoError" class="mt-2 text-xs text-red-600">{{ photoError }}</p>
                             <div v-if="existingPhotos.length" class="mt-4 space-y-2"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Foto tersimpan</p><article v-for="(photo, index) in existingPhotos" :key="photo.id" class="flex items-center gap-2 rounded-lg border border-slate-200 p-2"><img :src="photo.url" alt="" class="h-14 w-20 rounded-md object-cover" /><span class="min-w-0 flex-1 text-xs font-bold text-slate-600">Foto {{ index + 1 }}</span><div class="flex gap-1"><button type="button" :disabled="index === 0" class="rounded border px-2 py-1 text-xs disabled:opacity-30" @click="move(existingPhotos, index, -1)">↑</button><button type="button" :disabled="index === existingPhotos.length - 1" class="rounded border px-2 py-1 text-xs disabled:opacity-30" @click="move(existingPhotos, index, 1)">↓</button><button type="button" class="rounded border border-red-200 px-2 py-1 text-xs text-red-600" @click="removeExistingPhoto(index)">×</button></div></article></div>
                             <div v-if="newPhotos.length" class="mt-4 space-y-2"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Foto baru</p><article v-for="(photo, index) in newPhotos" :key="photo.key" class="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 p-2"><img :src="photo.url" alt="" class="h-14 w-20 rounded-md object-cover" /><span class="min-w-0 flex-1 truncate text-xs font-bold text-slate-600">{{ photo.file.name }}</span><div class="flex gap-1"><button type="button" :disabled="index === 0" class="rounded border px-2 py-1 text-xs disabled:opacity-30" @click="move(newPhotos, index, -1)">↑</button><button type="button" :disabled="index === newPhotos.length - 1" class="rounded border px-2 py-1 text-xs disabled:opacity-30" @click="move(newPhotos, index, 1)">↓</button><button type="button" class="rounded border border-red-200 px-2 py-1 text-xs text-red-600" @click="removeNewPhoto(index)">×</button></div></article></div>
                             <div v-if="!existingPhotos.length && !newPhotos.length" class="mt-4 grid min-h-28 place-items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-xs text-slate-400">Minimal satu foto wajib tersedia.</div>

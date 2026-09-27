@@ -20,6 +20,9 @@ const props = defineProps({
     signatures: { type: Object, default: () => ({}) },
     canSignEmployee: Boolean,
     canSignSupervisor: Boolean,
+    canEditValue: Boolean,
+    isLocked: Boolean,
+    correctionPendingReapproval: Boolean,
     employeePeriods: { type: Array, default: () => [] },
 });
 
@@ -104,8 +107,13 @@ const hasSubmitted = computed(
 const signaturesComplete = computed(() =>
     Boolean(employeeSignature.value && supervisorSignature.value),
 );
+const hasTakeover = computed(() =>
+    [employeeSignature.value, supervisorSignature.value].some((signature) => signature?.source === "super_admin_takeover"),
+);
 const isLocked = computed(
     () =>
+        props.isLocked ||
+        props.correctionPendingReapproval ||
         hasNotFilled.value ||
         Boolean(employeeSignature.value || supervisorSignature.value) ||
         signaturesComplete.value ||
@@ -118,6 +126,7 @@ const isEditable = computed(
         !props.isConfigurator &&
         props.isOwner &&
         props.isWindowAllowed &&
+        props.canEditValue !== false &&
         !isLocked.value,
 );
 const isParameterEditable = computed(
@@ -129,8 +138,8 @@ const configTotalTarget = computed(() =>
 
 const statusLabel = computed(() => {
     if (!props.items.length) return "Belum Dikonfigurasi";
+    if (signaturesComplete.value) return hasTakeover.value ? "Dialihkan" : "Selesai";
     if (hasNotFilled.value) return "Tidak Mengisi";
-    if (signaturesComplete.value) return "Selesai";
     if (
         hasSubmitted.value &&
         employeeSignature.value &&
@@ -156,6 +165,7 @@ const statusClass = computed(
     () =>
         ({
             Selesai: "bg-emerald-100 text-emerald-700",
+            Dialihkan: "bg-emerald-800 text-white",
             "Dalam Pengisian": "bg-emerald-100 text-emerald-700",
             "Belum Diisi": "bg-slate-100 text-slate-600",
             "Belum Dikonfigurasi": "bg-rose-100 text-rose-700",

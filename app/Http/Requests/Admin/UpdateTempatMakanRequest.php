@@ -5,6 +5,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\TempatMakan;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use App\Rules\TotalUploadSize;
 
 class UpdateTempatMakanRequest extends FormRequest
 {
@@ -28,8 +29,8 @@ class UpdateTempatMakanRequest extends FormRequest
             'is_recommended' => ['required', 'boolean'],
             'is_active' => ['required', 'boolean'],
             'urutan_tampil' => ['required', 'integer', 'min:0', 'max:999'],
-            'fotos' => ['nullable', 'array'],
-            'fotos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'fotos' => ['nullable', 'array', new TotalUploadSize(config('cms_uploads.tempat_makan.max_total_kb'), 'Total ukuran foto Tempat Makan maksimal 30 MB.')],
+            'fotos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('cms_uploads.tempat_makan.max_file_kb')],
             'existing_photo_order' => ['nullable', 'array'],
             'existing_photo_order.*' => ['integer', 'distinct'],
             'menu_highlights' => ['nullable', 'array'],
@@ -40,7 +41,7 @@ class UpdateTempatMakanRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'fotos.*.max' => 'Ukuran setiap foto maksimal 5 MB.',
+            'fotos.*.max' => 'Ukuran setiap foto Tempat Makan maksimal 10 MB.',
             'existing_photo_order.*.distinct' => 'Daftar foto Tempat Makan tidak valid.',
         ];
     }

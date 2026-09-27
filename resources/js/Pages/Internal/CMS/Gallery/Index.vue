@@ -3,6 +3,7 @@ import InternalDashboardLayout from "@/Layouts/InternalDashboardLayout.vue";
 import { Head, router, useForm, usePage } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFiles } from "@/utils/cmsUploadValidation";
 
 const props = defineProps({
     user: { type: Object, required: true },
@@ -15,6 +16,7 @@ const modal = ref(null);
 const deleteTarget = ref(null);
 const existingPhotos = ref([]);
 const newPhotoItems = ref([]);
+const localPhotoError = ref(null);
 const nameInput = ref(null);
 const fileInputKey = ref(0);
 const form = useForm({
@@ -28,6 +30,7 @@ const form = useForm({
 
 const pageError = computed(() => page.props.errors?.existing_photos);
 const photoError = computed(() => {
+    if (localPhotoError.value) return localPhotoError.value;
     if (form.errors.fotos) return form.errors.fotos;
 
     return (
@@ -54,6 +57,7 @@ const revokeNewPhotoPreviews = () => {
 };
 
 const openModal = async (item = null) => {
+    localPhotoError.value = null;
     revokeNewPhotoPreviews();
     form.clearErrors();
     form.reset();
@@ -77,6 +81,7 @@ const openModal = async (item = null) => {
 };
 
 const closeModal = () => {
+    localPhotoError.value = null;
     modal.value = null;
     existingPhotos.value = [];
     revokeNewPhotoPreviews();
@@ -86,6 +91,9 @@ const closeModal = () => {
 
 const selectPhotos = (event) => {
     const files = Array.from(event.target.files || []);
+    const combined = [...newPhotoItems.value.map((photo) => photo.file), ...files];
+    localPhotoError.value = validateUploadFiles(combined, CMS_UPLOAD_LIMITS.gallery, 'foto Galeri Event');
+    if (localPhotoError.value) { event.target.value = ''; return; }
 
     newPhotoItems.value.push(
         ...files.map((file, index) => ({
@@ -115,6 +123,7 @@ const removeNewPhoto = (index) => {
     const [photo] = newPhotoItems.value.splice(index, 1);
     if (photo) URL.revokeObjectURL(photo.url);
     form.fotos = newPhotoItems.value.map((item) => item.file);
+    localPhotoError.value = validateUploadFiles(form.fotos, CMS_UPLOAD_LIMITS.gallery, 'foto Galeri Event');
 };
 
 const submit = async () => {
@@ -455,9 +464,7 @@ onBeforeUnmount(() => {
                             <p
                                 class="mt-2 text-[10px] leading-4 text-slate-500"
                             >
-                                Pilih satu atau banyak JPG, PNG, atau WebP.
-                                Maksimal 5 MB per foto dan tidak ada batas
-                                jumlah album hardcoded.
+                                JPG, JPEG, PNG, atau WebP • Maks. 10 MB per foto • Maks. total 50 MB • Disarankan sisi terpanjang minimal 1600–1920 px; pertahankan rasio asli.
                             </p>
                             <p
                                 v-if="photoError"

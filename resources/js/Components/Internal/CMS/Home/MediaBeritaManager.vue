@@ -2,6 +2,7 @@
 import { router, useForm } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFile } from "@/utils/cmsUploadValidation";
 
 defineProps({ items: { type: Array, required: true } });
 
@@ -56,6 +57,9 @@ const closeModal = () => {
 };
 const selectPhoto = (event) => {
     const [file] = event.target.files;
+    form.clearErrors('foto');
+    const error = validateUploadFile(file, CMS_UPLOAD_LIMITS.media.file, 'gambar Media & Berita');
+    if (error) { event.target.value = ''; form.foto = null; form.setError('foto', error); return; }
     revokePreview();
     form.foto = file || null;
     localPreview.value = file ? URL.createObjectURL(file) : null;
@@ -282,7 +286,7 @@ onBeforeUnmount(() => {
                                 @change="selectPhoto"
                         /></label>
                         <p class="mt-2 text-[10px] text-slate-500">
-                            JPG, PNG, atau WebP. Maksimal 5 MB.
+                            JPG, JPEG, PNG, atau WebP • Maks. ukuran file: 20 MB • Disarankan 1600 × 1000 px (16:10).
                         </p>
                         <p
                             v-if="form.errors.foto"

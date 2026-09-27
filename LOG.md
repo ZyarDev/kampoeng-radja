@@ -1,8 +1,14 @@
 # LOG.md — Kampoeng Radja Project Tracker
 
-Terakhir diperbarui: **23 September 2026**
+Terakhir diperbarui: **27 September 2026**
 Dasar status: audit source code pada working tree aktif, bukan klaim dokumentasi
-Fokus terbaru: **Perbaikan responsive Produk, swipe Promo mobile, dan pembaruan aset Tentang Kami**
+Fokus terbaru: **Kalender kerja terpusat untuk Absensi dan KPI**
+
+## Perubahan Terbaru — 27 September 2026
+
+- Kalender kerja terpusat ditambahkan melalui `WorkCalendarService`: Jumat menjadi Libur Mingguan secara default, sedangkan override tanggal khusus disimpan di `work_calendar_overrides`.
+- Absensi, Daily Report, monitoring KPI, dan export Daily kini membaca status hari kerja dari service yang sama. Hari libur tidak menyediakan H/I/A, tidak menjadi Daily Tidak Diisi, dan tidak masuk denominator Daily.
+- Migration kalender kerja sudah dijalankan; verifikasi manual menunjukkan 1 Oktober 2026 Hari Kerja, 2 Oktober 2026 Libur Mingguan, dan override 2 Oktober menjadi Hari Kerja bekerja sesuai prioritas.
 
 Dokumen ini adalah pintu masuk tunggal untuk melihat posisi proyek. Untuk detail requirement tetap buka dokumen sumber yang dirujuk; `LOG.md` tidak menggantikan PRD, aturan agent, atau Figma.
 

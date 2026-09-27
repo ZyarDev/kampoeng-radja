@@ -11,6 +11,8 @@ const props = defineProps({
     today: { type: String, required: true },
     yesterday: { type: String, required: true },
     isToday: { type: Boolean, required: true },
+    dayStatus: { type: Object, default: () => ({ is_working_day: true, label: 'Hari Kerja', reason: 'Hari Kerja Normal' }) },
+    isWorkingDay: { type: Boolean, default: true },
     canMutateDate: { type: Boolean, required: true },
     isSaved: { type: Boolean, required: true },
     employees: { type: Array, required: true },
@@ -401,19 +403,24 @@ watch(
                         <div class="mt-2 flex flex-wrap items-center gap-2">
                             <span
                                 :class="
-                                    attendanceDay.type === 'event'
+                                    !isWorkingDay
+                                        ? 'border-slate-300 bg-slate-100 text-slate-600'
+                                        : attendanceDay.type === 'event'
                                         ? 'border-violet-200 bg-violet-50 text-violet-700'
                                         : 'border-slate-200 bg-slate-50 text-slate-600'
                                 "
                                 class="inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
                             >
                                 {{
-                                    attendanceDay.type === "event"
+                                    !isWorkingDay ? 'LIBUR' : attendanceDay.type === "event"
                                         ? "Hari Event"
                                         : "Hari Normal"
                                 }}
                             </span>
-                            <template v-if="attendanceDay.type === 'event'">
+                            <template v-if="!isWorkingDay">
+                                <span class="text-sm font-semibold text-slate-700">{{ dayStatus.reason }}</span>
+                            </template>
+                            <template v-else-if="attendanceDay.type === 'event'">
                                 <span
                                     class="text-sm font-semibold text-slate-800"
                                     >{{ attendanceDay.eventName }}</span
@@ -426,11 +433,12 @@ watch(
                                     Panitia</span
                                 >
                             </template>
-                            <span v-else class="text-xs text-slate-500"
+                            <span v-else-if="isWorkingDay" class="text-xs text-slate-500"
                                 >Target 08:30 · Toleransi 10 menit</span
                             >
                         </div>
-                        <p
+                            <p
+                        v-if="isWorkingDay"
                             :class="
                                 canMutateDate && permissions.canManage
                                     ? 'text-emerald-700'
@@ -460,7 +468,7 @@ watch(
                     </div>
 
                     <p
-                        v-if="canMutateDate && permissions.canManage"
+                        v-if="isWorkingDay && canMutateDate && permissions.canManage"
                         :class="
                             missingSelectionCount > 0
                                 ? 'bg-amber-50 text-amber-700'
@@ -796,7 +804,7 @@ watch(
                                 </td>
                                 <td class="px-3 py-3 align-middle">
                                     <fieldset
-                                        v-if="isEditing"
+                                        v-if="isEditing && employee.isWorkingDay"
                                         class="flex gap-2"
                                     >
                                         <legend class="sr-only">
@@ -841,6 +849,7 @@ watch(
                                     </fieldset>
                                     <span
                                         v-else-if="
+                                            employee.isWorkingDay &&
                                             recordFor(employee.id)
                                                 .status_kehadiran
                                         "
@@ -857,7 +866,8 @@ watch(
                                                 .status_kehadiran
                                         }}
                                     </span>
-                                    <span v-else class="text-slate-400">-</span>
+                                    <span v-else-if="employee.isWorkingDay" class="text-slate-400">Belum Diinput</span>
+                                    <span v-else class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">LIBUR</span>
                                     <p
                                         v-if="
                                             fieldError(
@@ -902,7 +912,7 @@ watch(
                                 </td>
                                 <td class="px-3 py-3 align-top">
                                     <AttendanceTimeInput
-                                        v-if="isEditing"
+                                        v-if="isEditing && employee.isWorkingDay"
                                         :ref="
                                             (component) =>
                                                 setTimeInputRef(
@@ -972,7 +982,7 @@ watch(
                                 </td>
                                 <td class="px-3 py-3 align-top">
                                     <AttendanceTimeInput
-                                        v-if="isEditing"
+                                        v-if="isEditing && employee.isWorkingDay"
                                         :ref="
                                             (component) =>
                                                 setTimeInputRef(
@@ -1034,7 +1044,7 @@ watch(
                                 </td>
                                 <td class="px-3 py-3 align-top">
                                     <input
-                                        v-if="isEditing"
+                                        v-if="isEditing && employee.isWorkingDay"
                                         v-model="
                                             recordFor(employee.id).keterangan
                                         "

@@ -2,6 +2,7 @@
 import { router, useForm } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFile } from "@/utils/cmsUploadValidation";
 
 const props = defineProps({
     promotions: { type: Array, required: true },
@@ -77,6 +78,9 @@ const closeModal = () => {
 
 const selectPoster = (event) => {
     const [file] = event.target.files;
+    form.clearErrors('poster');
+    const error = validateUploadFile(file, CMS_UPLOAD_LIMITS.promo.file, 'gambar Promo');
+    if (error) { event.target.value = ''; form.poster = null; form.setError('poster', error); return; }
     revokePreview();
     form.poster = file || null;
     localPreviewUrl.value = file ? URL.createObjectURL(file) : null;
@@ -431,7 +435,7 @@ onBeforeUnmount(() => {
                             />
                         </label>
                         <p class="mt-2 text-[10px] leading-4 text-slate-500">
-                            JPG, PNG, atau WebP. Maksimal 5 MB. Poster lama
+                            JPG, JPEG, PNG, atau WebP • Maks. ukuran file: 20 MB • Disarankan 1200 × 1500 px (4:5). Poster lama
                             tetap dipakai jika tidak diganti.
                         </p>
                         <p

@@ -552,7 +552,7 @@ const featuredCards = computed(() =>
                             class="promo-navigation absolute left-0 top-1/2 z-20 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/30 bg-[#073e7c]/90 text-lg font-bold text-white shadow-[0_8px_22px_rgba(0,25,62,.28)] backdrop-blur-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffca58]/60 disabled:cursor-wait disabled:opacity-50 sm:left-1 lg:left-2 lg:h-11 lg:w-11"
                             @click="movePromo(-1)"
                         >
-                            ←
+                            &lt;
                         </button>
                         <div
                             ref="promoViewport"
@@ -646,7 +646,7 @@ const featuredCards = computed(() =>
                             class="promo-navigation absolute right-0 top-1/2 z-20 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/30 bg-[#073e7c]/90 text-lg font-bold text-white shadow-[0_8px_22px_rgba(0,25,62,.28)] backdrop-blur-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffca58]/60 disabled:cursor-wait disabled:opacity-50 sm:right-1 lg:right-2 lg:h-11 lg:w-11"
                             @click="movePromo(1)"
                         >
-                            →
+                            &gt;
                         </button>
                     </div>
                 </div>

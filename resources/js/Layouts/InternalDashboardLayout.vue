@@ -44,7 +44,7 @@ const showIndividuGroup = computed(() => kpiPermissions.value.canViewPersonal ==
 const showMpaMenu = computed(() => kpiPermissions.value.canAccessMpa === true);
 const showEmployeesMenu = computed(() => kpiPermissions.value.isSupervisor || kpiPermissions.value.isHrdOrAdmin);
 const showKpiMenu = computed(() => showIndividuGroup.value || showEmployeesMenu.value || showMpaMenu.value || kpiPermissions.value.canManagePeriod === true || kpiPermissions.value.canViewPeriod === true);
-const activePeriodId = computed(() => page.props.period?.id ?? page.props.activePeriodId ?? page.props.auth?.kpi?.activePeriodId ?? null);
+const activePeriodId = computed(() => page.props.currentPeriodId ?? page.props.period?.id ?? page.props.activePeriodId ?? page.props.auth?.kpi?.activePeriodId ?? null);
 
 const kpiIndividuRouteActive = computed(() => {
     const path = page.url.split('?')[0];

@@ -17,6 +17,11 @@ class KpiIndividualScore extends Model
             'score' => 'decimal:2',
             'parameter_snapshot' => 'array',
             'submitted_at' => 'datetime',
+            'value_locked' => 'boolean',
+            'corrected_score' => 'decimal:2',
+            'correction_revision' => 'integer',
+            'correction_pending_reapproval' => 'boolean',
+            'corrected_at' => 'datetime',
         ];
     }
 

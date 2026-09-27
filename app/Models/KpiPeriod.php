@@ -5,6 +5,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 class KpiPeriod extends Model
 {
+    public const STATUS_PREPARATION = 'draft';
+    public const STATUS_ACTIVE = 'active';
+
     protected $guarded = [];
 
     protected function casts(): array

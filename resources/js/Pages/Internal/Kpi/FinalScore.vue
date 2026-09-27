@@ -101,7 +101,12 @@ const submitCorrection = async () => {
   });
 
   if (confirmed) {
-    correctionForm.post(route('dashboard.kpi.correct'), {
+    correctionForm.transform((data) => ({
+      ...data,
+      payload: data.component === 'kinerja_ops'
+        ? { ops_items: (data.payload.ops_items || []).map((item) => ({ id: item.id, hasil: item.hasil })) }
+        : data.payload,
+    })).post(route('dashboard.kpi.correct'), {
       onSuccess: () => {
         isCorrectionOpen.value = false;
       },
@@ -266,12 +271,10 @@ const handleSign = async (scoreRecord) => {
               <p class="text-xs font-semibold text-slate-600">Item Kinerja OPS</p>
               <div v-for="(item, index) in correctionForm.payload.ops_items" :key="item.id" class="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
                 <div class="text-xs font-semibold text-slate-700">{{ item.kpi_item || `Item ${index + 1}` }}</div>
-                <input v-model="item.maintenance" type="text" placeholder="Maintenance" class="w-full rounded border-slate-300 text-sm" />
-                <div class="grid grid-cols-2 gap-2">
-                  <input v-model.number="item.hasil" type="number" step="1" placeholder="Hasil" class="rounded border-slate-300 text-sm" />
-                  <input v-model.number="item.nilai_item" type="number" step="1" placeholder="Nilai" class="rounded border-slate-300 text-sm" />
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <label class="text-slate-500">Target<input :value="item.target_unit" type="number" readonly class="mt-1 w-full rounded border-slate-200 bg-slate-100 text-sm" /></label>
+                  <label class="text-slate-700">Hasil<input v-model.number="item.hasil" type="number" step="1" min="0" class="mt-1 w-full rounded border-slate-300 text-sm" /></label>
                 </div>
-                <textarea v-model="item.aktivitas" rows="2" placeholder="Aktivitas pencapaian" class="w-full rounded border-slate-300 text-sm"></textarea>
               </div>
               <p v-if="!correctionForm.payload.ops_items.length" class="text-xs text-slate-400">Belum ada parameter Kinerja OPS untuk peserta ini.</p>
             </div>

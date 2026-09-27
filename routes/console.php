@@ -28,6 +28,8 @@ Artisan::command('kpi:process-deadlines', function () {
                         'perawatan_aset' => null,
                         'kebersihan_kerapihan' => null,
                         'score' => 0,
+                        'value_locked' => true,
+                        'submitted_at' => $now,
                     ]);
                 }
             }
@@ -158,10 +160,20 @@ Schedule::command('kpi:process-deadlines')->hourly()->timezone('Asia/Jakarta')->
 
 Artisan::command('kpi:ensure-current-period', function () {
     $now = KpiClock::now();
-    $performanceMonth = $now->copy()->subMonthNoOverflow();
-    $period = app(\App\Services\KpiPeriodService::class)->ensureForPerformanceMonth($performanceMonth->month, $performanceMonth->year);
-    $this->info("Periode KPI {$period->bulan}/{$period->tahun} tersedia dengan ".\App\Models\KpiParticipant::where('kpi_period_id', $period->id)->count().' peserta.');
-})->purpose('Ensure KPI period and participant snapshots for the previous performance month');
+    $result = app(\App\Services\KpiPeriodService::class)->runLifecycle($now);
+    $period = $result['active'];
+    $this->info("Periode KPI {$period->bulan}/{$period->tahun} aktif dengan ".\App\Models\KpiParticipant::where('kpi_period_id', $period->id)->where('status', 'active')->count().' peserta.');
+    if ($result['next']) {
+        $this->line("Periode berikutnya {$result['next']->bulan}/{$result['next']->tahun} berstatus persiapan.");
+    }
+})->purpose('Ensure the current active period and next preparation period using KpiClock');
+
+Artisan::command('kpi:ensure-period-lifecycle', function () {
+    $result = app(\App\Services\KpiPeriodService::class)->runLifecycle(KpiClock::now());
+    $this->info('KPI period lifecycle reconciled idempotently.');
+    $this->line('Active: '.($result['active']?->bulan.'/'.$result['active']?->tahun ?? '-'));
+    $this->line('Next preparation: '.($result['next']?->bulan.'/'.$result['next']?->tahun ?? 'not required yet'));
+})->purpose('Create next preparation period from day 25 and activate preparation on day 1');
 
 Artisan::command('kpi:clock', function () {
     $this->line('KPI Clock Mode : '.(KpiClock::isDebugging() ? 'DEBUG' : 'REAL'));
@@ -169,4 +181,4 @@ Artisan::command('kpi:clock', function () {
     $this->line('Timezone       : Asia/Jakarta');
 })->purpose('Display the effective clock used by KPI business rules');
 
-Schedule::command('kpi:ensure-current-period')->monthlyOn(1, '00:05')->timezone('Asia/Jakarta')->withoutOverlapping();
+Schedule::command('kpi:ensure-period-lifecycle')->dailyAt('00:05')->timezone('Asia/Jakarta')->withoutOverlapping();

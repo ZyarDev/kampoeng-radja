@@ -49,6 +49,7 @@ Route::prefix('dashboard')
             Route::get('/', [KpiController::class, 'index'])->name('index');
             Route::get('period/{period}/employee/{employee}/export', [KpiController::class, 'exportEmployeeKpi'])->name('employee.export');
             Route::post('period', [KpiController::class, 'createPeriod'])->name('period.store');
+            Route::post('period/next-draft', [KpiController::class, 'createPeriod'])->name('period.next-draft');
             Route::get('period/{period}/karyawan', [KpiController::class, 'employees'])->name('employees');
             Route::match(['get','post'],'daily', [KpiController::class, 'daily'])->name('daily');
             Route::post('daily/bulk-approve', [KpiController::class, 'bulkApproveDaily'])->name('daily.bulk-approve');

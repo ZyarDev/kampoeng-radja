@@ -2,6 +2,7 @@
 import { router, useForm } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFile } from "@/utils/cmsUploadValidation";
 
 defineProps({ products: { type: Array, required: true } });
 const modal = ref(null);
@@ -57,6 +58,9 @@ const closeModal = () => {
 };
 const selectImage = (field, event) => {
     const [file] = event.target.files;
+    form.clearErrors(field);
+    const error = validateUploadFile(file, CMS_UPLOAD_LIMITS.product.file, 'gambar Produk');
+    if (error) { event.target.value = ''; form[field] = null; form.setError(field, error); return; }
     const target = field === "thumbnail" ? thumbnailPreview : heroPreview;
     if (target.value) URL.revokeObjectURL(target.value);
     form[field] = file || null;
@@ -366,7 +370,7 @@ onBeforeUnmount(() => {
                             />
                         </div>
                         <p class="text-[10px] leading-4 text-slate-500">
-                            JPG, PNG, atau WebP. Maksimal 5 MB per file.
+                            JPG, JPEG, PNG, atau WebP • Maks. 20 MB per file • Thumbnail 1200 × 1500 px (4:5), Hero Image 1600 × 700 px (16:7).
                         </p>
                     </div>
                 </div>

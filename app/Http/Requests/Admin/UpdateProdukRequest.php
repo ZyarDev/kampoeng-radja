@@ -8,8 +8,13 @@ class UpdateProdukRequest extends StoreProdukRequest
     {
         return [
             ...parent::rules(),
-            'thumbnail' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
-            'hero_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'thumbnail' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('cms_uploads.produk.max_kb')],
+            'hero_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:'.config('cms_uploads.produk.max_kb')],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['thumbnail.max' => 'Ukuran gambar Produk maksimal 20 MB.', 'hero_image.max' => 'Ukuran gambar Produk maksimal 20 MB.'];
     }
 }

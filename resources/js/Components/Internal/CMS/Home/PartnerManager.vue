@@ -2,6 +2,7 @@
 import { router, useForm } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFile } from "@/utils/cmsUploadValidation";
 
 defineProps({ partners: { type: Array, required: true } });
 const modal = ref(null);
@@ -45,6 +46,9 @@ const closeModal = () => {
 };
 const selectLogo = (event) => {
     const [file] = event.target.files;
+    form.clearErrors('logo');
+    const error = validateUploadFile(file, CMS_UPLOAD_LIMITS.partner.file, 'logo Mitra');
+    if (error) { event.target.value = ''; form.logo = null; form.setError('logo', error); return; }
     revoke();
     form.logo = file || null;
     localPreview.value = file ? URL.createObjectURL(file) : null;
@@ -271,7 +275,7 @@ onBeforeUnmount(() => {
                                 @change="selectLogo"
                         /></label>
                         <p class="mt-2 text-[10px] text-slate-500">
-                            JPG, PNG, atau WebP. Maksimal 5 MB.
+                            JPG, JPEG, PNG, atau WebP • Maks. 5 MB per logo • Disarankan sekitar 800 × 800 px atau lebih, pertahankan rasio asli. PNG/WebP transparan didukung.
                         </p>
                         <p
                             v-if="form.errors.logo"

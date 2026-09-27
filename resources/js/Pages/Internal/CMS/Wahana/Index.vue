@@ -4,6 +4,7 @@ import { Head, router, useForm, usePage } from "@inertiajs/vue3";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
 import DiningPlaceManager from "@/Components/Internal/CMS/Wahana/DiningPlaceManager.vue";
+import { CMS_UPLOAD_LIMITS, validateUploadFiles } from "@/utils/cmsUploadValidation";
 
 const props = defineProps({
     user: { type: Object, required: true },
@@ -22,6 +23,7 @@ const modal = ref(null);
 const deleteTarget = ref(null);
 const existingPhotos = ref([]);
 const newPhotoItems = ref([]);
+const localPhotoError = ref(null);
 const nameInput = ref(null);
 const fileInputKey = ref(0);
 const activeTab = ref(props.initialTab);
@@ -38,6 +40,7 @@ const form = useForm({
 
 const pageError = computed(() => page.props.errors?.is_unggulan);
 const photoError = computed(() => {
+    if (localPhotoError.value) return localPhotoError.value;
     if (form.errors.fotos) return form.errors.fotos;
 
     return (
@@ -53,6 +56,7 @@ const revokeNewPhotoPreviews = () => {
 };
 
 const openModal = async (item = null) => {
+    localPhotoError.value = null;
     revokeNewPhotoPreviews();
     form.clearErrors();
     form.reset();
@@ -76,6 +80,7 @@ const openModal = async (item = null) => {
 };
 
 const closeModal = () => {
+    localPhotoError.value = null;
     modal.value = null;
     existingPhotos.value = [];
     revokeNewPhotoPreviews();
@@ -85,6 +90,9 @@ const closeModal = () => {
 
 const selectPhotos = (event) => {
     const files = Array.from(event.target.files || []);
+    const combined = [...newPhotoItems.value.map((photo) => photo.file), ...files];
+    localPhotoError.value = validateUploadFiles(combined, CMS_UPLOAD_LIMITS.wahana, 'foto Wahana');
+    if (localPhotoError.value) { event.target.value = ''; return; }
 
     newPhotoItems.value.push(
         ...files.map((file, index) => ({
@@ -113,6 +121,7 @@ const removeNewPhoto = (index) => {
     const [photo] = newPhotoItems.value.splice(index, 1);
     if (photo) URL.revokeObjectURL(photo.url);
     form.fotos = newPhotoItems.value.map((item) => item.file);
+    localPhotoError.value = validateUploadFiles(form.fotos, CMS_UPLOAD_LIMITS.wahana, 'foto Wahana');
 };
 
 const submit = async () => {
@@ -601,9 +610,7 @@ onBeforeUnmount(() => {
                                 <p
                                     class="mt-2 text-[10px] leading-4 text-slate-500"
                                 >
-                                    Pilih satu atau beberapa JPG, PNG, atau
-                                    WebP. Maksimal 5 MB per foto. Foto paling
-                                    atas menjadi cover.
+                                    JPG, JPEG, PNG, atau WebP • Maks. 10 MB per foto • Maks. total 30 MB • Disarankan 1200 × 800 px (3:2). Foto paling atas menjadi cover.
                                 </p>
                                 <p
                                     v-if="photoError"

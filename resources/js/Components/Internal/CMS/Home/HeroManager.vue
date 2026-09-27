@@ -2,6 +2,7 @@
 import { useForm } from "@inertiajs/vue3";
 import { computed, onBeforeUnmount, ref } from "vue";
 import { useConfirmation } from "@/composables/useConfirmation";
+import { CMS_UPLOAD_LIMITS, validateUploadFile } from "@/utils/cmsUploadValidation";
 
 const props = defineProps({
     hero: { type: Object, default: null },
@@ -25,8 +26,17 @@ const revokePreview = (preview) => {
 };
 
 const selectVideo = (event) => {
+    form.clearErrors('video');
+    const file = event.target.files?.[0] ?? null;
+    const error = validateUploadFile(file, CMS_UPLOAD_LIMITS.hero.file, 'video Hero');
+    if (error) {
+        event.target.value = '';
+        form.video = null;
+        form.setError('video', error);
+        return;
+    }
     revokePreview(videoPreview);
-    form.video = event.target.files?.[0] ?? null;
+    form.video = file;
     if (form.video) videoPreview.value = URL.createObjectURL(form.video);
 };
 
@@ -78,7 +88,7 @@ onBeforeUnmount(() => {
                         Video Hero
                     </p>
                     <p class="mt-1 text-xs text-slate-500">
-                        MP4 atau WebM, maksimal 30 MB.
+                            MP4 atau WebM • Maks. ukuran file: 100 MB • Disarankan video landscape 1920 × 1080 px (16:9).
                     </p>
                 </div>
                 <div class="p-4">

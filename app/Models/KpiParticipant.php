@@ -9,6 +9,15 @@ class KpiParticipant extends Model
 {
     protected $guarded = [];
 
+    protected function casts(): array
+    {
+        return [
+            'ops_correction_revision' => 'integer',
+            'ops_correction_pending_reapproval' => 'boolean',
+            'ops_corrected_at' => 'datetime',
+        ];
+    }
+
     public function period(): BelongsTo
     {
         return $this->belongsTo(KpiPeriod::class, 'kpi_period_id');

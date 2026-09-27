@@ -11,6 +11,7 @@ use App\Models\AttendanceDay;
 use App\Models\Karyawan;
 use App\Support\AttendanceAccess;
 use App\Support\AttendanceTimeliness;
+use App\Services\WorkCalendarService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,7 +24,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AbsensiController extends Controller
 {
-    public function index(Request $request, AttendanceAccess $access, AttendanceTimeliness $timeliness): Response
+    public function index(Request $request, AttendanceAccess $access, AttendanceTimeliness $timeliness, WorkCalendarService $calendar): Response
     {
         $permissions = $access->for($request->user());
         abort_unless($permissions['canView'], 403);
@@ -31,7 +32,9 @@ class AbsensiController extends Controller
         $today = CarbonImmutable::today('Asia/Jakarta');
         $yesterday = $today->subDay();
         $selectedDate = $this->selectedDate($request, $today);
-        $canMutateDate = $selectedDate->betweenIncluded($yesterday, $today);
+        $dayStatus = $calendar->getDayStatus($selectedDate);
+        $isWorkingDay = $dayStatus['is_working_day'];
+        $canMutateDate = $selectedDate->betweenIncluded($yesterday, $today) && $isWorkingDay;
         $historicalEmployeeIds = Absensi::query()
             ->whereDate('tanggal_absensi', $selectedDate)
             ->select('karyawan_id');
@@ -62,7 +65,7 @@ class AbsensiController extends Controller
             ->first();
 
         $employeePayload = $employees
-            ->map(function (Karyawan $employee) use ($attendance, $attendanceDay, $timeliness): array {
+            ->map(function (Karyawan $employee) use ($attendance, $attendanceDay, $timeliness, $dayStatus): array {
                 $record = $attendance->get($employee->id);
                 $schedule = $timeliness->scheduleFor($attendanceDay, $employee->id);
 
@@ -75,6 +78,10 @@ class AbsensiController extends Controller
                     'scheduleType' => $schedule['type'],
                     'scheduledTime' => $schedule['expectedTime'],
                     'toleranceMinutes' => $schedule['toleranceMinutes'],
+                    'isWorkingDay' => $dayStatus['is_working_day'],
+                    'dayType' => $dayStatus['type'],
+                    'dayLabel' => $dayStatus['label'],
+                    'dayReason' => $dayStatus['reason'],
                     'attendance' => $record ? [
                         'status' => $record->status_kehadiran,
                         'entryTime' => $this->timeValue($record->jam_masuk),
@@ -95,8 +102,10 @@ class AbsensiController extends Controller
             'today' => $today->toDateString(),
             'yesterday' => $yesterday->toDateString(),
             'isToday' => $selectedDate->isSameDay($today),
+            'dayStatus' => $dayStatus,
+            'isWorkingDay' => $isWorkingDay,
             'canMutateDate' => $canMutateDate,
-            'isSaved' => $employeePayload->isNotEmpty() && $attendance->count() === $employeePayload->count(),
+            'isSaved' => ! $isWorkingDay || ($employeePayload->isNotEmpty() && $attendance->count() === $employeePayload->count()),
             'employees' => $employeePayload,
             'attendanceDay' => $this->attendanceDayPayload($attendanceDay),
             'permissions' => $permissions,
@@ -159,9 +168,11 @@ class AbsensiController extends Controller
             ->with('success', 'Tanggal dikembalikan menjadi Hari Normal.');
     }
 
-    public function store(SaveAbsensiRequest $request): RedirectResponse
+    public function store(SaveAbsensiRequest $request, WorkCalendarService $calendar): RedirectResponse
     {
         $validated = $request->validated();
+        $dayStatus = $calendar->getDayStatus($validated['tanggal_absensi']);
+        abort_unless($dayStatus['is_working_day'], 422, 'Tanggal tersebut merupakan hari libur. Absensi tidak diperlukan.');
 
         DB::transaction(function () use ($validated): void {
             foreach ($validated['records'] as $record) {

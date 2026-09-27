@@ -24,7 +24,7 @@ class UpdateHomeHeroRequest extends FormRequest
                 'nullable',
                 'file',
                 'mimes:mp4,webm',
-                'max:30720',
+                'max:'.config('cms_uploads.hero.max_kb'),
             ],
         ];
     }
@@ -34,7 +34,7 @@ class UpdateHomeHeroRequest extends FormRequest
         return [
             'video.required' => 'Video Hero wajib dipilih.',
             'video.mimes' => 'Video Hero harus berformat MP4 atau WebM.',
-            'video.max' => 'Ukuran Video Hero maksimal 30 MB.',
+            'video.max' => 'Ukuran video Hero maksimal 100 MB.',
         ];
     }
 }

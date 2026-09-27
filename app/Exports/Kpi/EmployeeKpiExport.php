@@ -10,6 +10,7 @@ use App\Models\KpiParticipant;
 use App\Models\KpiPeriod;
 use App\Models\KpiSignature;
 use App\Support\KpiClock;
+use App\Services\WorkCalendarService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -29,9 +30,11 @@ class EmployeeKpiExport
     private ?KpiFinalScore $final;
     private Collection $finalSignatures;
     private array $temporaryImages = [];
+    private WorkCalendarService $workCalendar;
 
     public function __construct(private readonly KpiPeriod $period, int $employeeId)
     {
+        $this->workCalendar = app(WorkCalendarService::class);
         $this->participant = KpiParticipant::query()->with([
             'karyawan.jabatan', 'karyawan.departemen', 'karyawan.penempatan',
             'individualScore.signatures.signedBy.karyawan', 'opsItems', 'signatures.signedBy.karyawan',
@@ -108,14 +111,15 @@ class EmployeeKpiExport
 
     private function populateDaily($sheet, Carbon $date): void
     {
-        $report = $this->reports->get($date->toDateString()); $attendance = $this->attendance->get($date->toDateString()); $this->set($sheet, 'A2', $date->locale('id')->translatedFormat('d F Y')); $this->identity($sheet, ['B5', 'B6', 'B7'], ['F5', 'F6', 'F7']);
-        if ($report && $attendance?->status_kehadiran === 'H' && $report->activities->isNotEmpty()) {
+        $dayStatus = $this->workCalendar->getDayStatus($date); $isWorkingDay = (bool) ($dayStatus['is_working_day'] ?? false); $report = $this->reports->get($date->toDateString()); $attendance = $this->attendance->get($date->toDateString()); $this->set($sheet, 'A2', $date->locale('id')->translatedFormat('d F Y')); $this->identity($sheet, ['B5', 'B6', 'B7'], ['F5', 'F6', 'F7']);
+        if ($isWorkingDay && $report && $attendance?->status_kehadiran === 'H' && $report->activities->isNotEmpty()) {
             $count = $report->activities->count(); $delta = $count - 6; if ($delta < 0) $sheet->removeRow(12, abs($delta)); if ($delta > 0) { $sheet->insertNewRowBefore(17, $delta); for ($row = 17; $row < 17 + $delta; $row++) $sheet->duplicateStyle($sheet->getStyle('A16:G16'), "A{$row}:G{$row}"); }
             foreach ($report->activities as $index => $activity) { $row = 11 + $index; $this->set($sheet, "A{$row}", $index + 1); $this->set($sheet, "B{$row}", $activity->rincian_kegiatan); $this->set($sheet, "F{$row}", $activity->keterangan ?: '-'); }
             $statusRow = 12 + $count; $statusRow += $this->renderEvidence($sheet, $statusRow, $report); $this->set($sheet, "E{$statusRow}", $this->dailyStatus($report)); $signRow = $statusRow + 2; $this->dailySignatureSlot($sheet, $signRow, $report, $report->approval_signature_path ? $report : null); return;
         }
         $sheet->removeRow(10, 7); $this->set($sheet, 'A9', 'STATUS DAILY REPORT');
         if ($date->gt(KpiClock::today())) { $this->set($sheet, 'A10', 'Tanggal belum terjadi. Daily Report belum tersedia.'); $this->set($sheet, 'A11', 'Belum tersedia'); }
+        elseif (! $isWorkingDay) { $this->set($sheet, 'A10', 'Status Kehadiran: '.($dayStatus['label'] ?? 'Libur').'. '.($dayStatus['reason'] ?? 'Daily Report tidak diwajibkan pada tanggal ini.').'.'); $this->set($sheet, 'A11', 'Tidak diwajibkan'); }
         elseif ($attendance?->status_kehadiran !== 'H') { $this->set($sheet, 'A10', 'Status Kehadiran: '.($attendance?->status_kehadiran ?: 'Tidak dijadwalkan').'. Daily Report tidak diwajibkan pada tanggal ini.'); $this->set($sheet, 'A11', 'Tidak diwajibkan'); }
         else { $this->set($sheet, 'A10', 'Daily Report wajib diisi pada tanggal ini, tetapi belum tersedia.'); $this->set($sheet, 'A11', 'TIDAK DIISI'); }
         $sheet->getStyle('A10:G10')->getAlignment()->setWrapText(true); $sheet->getRowDimension(10)->setRowHeight(38); $this->clearDailySignature($sheet, 13);
