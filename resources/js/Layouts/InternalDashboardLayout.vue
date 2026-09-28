@@ -44,7 +44,15 @@ const showIndividuGroup = computed(() => kpiPermissions.value.canViewPersonal ==
 const showMpaMenu = computed(() => kpiPermissions.value.canAccessMpa === true);
 const showEmployeesMenu = computed(() => kpiPermissions.value.isSupervisor || kpiPermissions.value.isHrdOrAdmin);
 const showKpiMenu = computed(() => showIndividuGroup.value || showEmployeesMenu.value || showMpaMenu.value || kpiPermissions.value.canManagePeriod === true || kpiPermissions.value.canViewPeriod === true);
-const activePeriodId = computed(() => page.props.currentPeriodId ?? page.props.period?.id ?? page.props.activePeriodId ?? page.props.auth?.kpi?.activePeriodId ?? null);
+// A route-bound period is the user's explicit context and must win. When
+// entering from another dashboard page, periodic KPI links use the working
+// period (which can remain the previous month during closing), while Daily
+// Report keeps the calendar-active period.
+const routePeriodId = computed(() => page.props.period?.id ?? page.props.currentPeriodId ?? page.props.selectedPeriod?.id ?? null);
+const dailyContextPeriodId = computed(() => page.props.period?.id ?? page.props.currentPeriodId ?? null);
+const calendarActivePeriodId = computed(() => page.props.activePeriodId ?? page.props.auth?.kpi?.activePeriodId ?? null);
+const workingPeriodId = computed(() => page.props.workingPeriodId ?? page.props.auth?.kpi?.workingPeriodId ?? calendarActivePeriodId.value ?? null);
+const activePeriodId = computed(() => routePeriodId.value ?? workingPeriodId.value);
 
 const kpiIndividuRouteActive = computed(() => {
     const path = page.url.split('?')[0];
@@ -54,20 +62,37 @@ const kpiIndividuRouteActive = computed(() => {
 const kpiExpanded = ref(kpiRouteActive.value);
 const kpiIndividuExpanded = ref(kpiIndividuRouteActive.value);
 
-const currentKpiEmployeeId = computed(() => {
-    // A direct click from another dashboard page should open the logged-in
-    // employee's own KPI context. Only an active employee KPI workspace may
-    // override it with the monitored employee from the current page.
-    if (!kpiIndividuRouteActive.value) return kpiPermissions.value.personalEmployeeId ?? null;
-
-    return page.props.monitoringEmployeeId
+const authenticatedEmployeeId = computed(() => Number(
+    kpiPermissions.value.personalEmployeeId
+        ?? page.props.auth?.user?.karyawan_id
+        ?? 0,
+));
+const viewedEmployeeId = computed(() => Number(
+    page.props.monitoringEmployeeId
         ?? page.props.employeeHeader?.id
+        ?? page.props.selectedParticipant?.karyawan_id
         ?? page.props.participant?.karyawan_id
-        ?? kpiPermissions.value.personalEmployeeId
-        ?? null;
+        ?? 0,
+));
+const isEmployeeKpiContext = computed(() => (
+    kpiIndividuRouteActive.value
+    && viewedEmployeeId.value > 0
+    && authenticatedEmployeeId.value > 0
+    && viewedEmployeeId.value !== authenticatedEmployeeId.value
+));
+const isKpiEmployeeWorkspaceActive = computed(() => (
+    route().current('dashboard.kpi.employees*') || isEmployeeKpiContext.value
+));
+const isOwnKpiLeafActive = (pattern) => !isEmployeeKpiContext.value && route().current(pattern);
+
+const currentKpiEmployeeId = computed(() => {
+    // Sidebar KPI links always represent the authenticated employee. A
+    // subordinate/employee context is navigated through the employee page's
+    // own header, never by reusing the sidebar link.
+    return authenticatedEmployeeId.value || null;
 });
 const kpiIndividualHref = (key) => {
-    const periodId = activePeriodId.value;
+    const periodId = key === 'daily' ? (dailyContextPeriodId.value ?? calendarActivePeriodId.value) : activePeriodId.value;
     const employeeId = currentKpiEmployeeId.value;
 
     if (key === 'daily') {
@@ -233,19 +258,19 @@ watch(
                                 <svg :class="[kpiIndividuExpanded ? 'rotate-180' : '']" class="h-3 w-3 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 10 5 5 5-5"/></svg>
                             </button>
                             <div v-show="kpiIndividuExpanded" class="ml-2 space-y-1 border-l border-slate-200 pl-2">
-                                <Link :href="kpiIndividualHref('daily')" :class="route().current('dashboard.kpi.daily*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Daily Report</Link>
-                                <Link v-if="activePeriodId" :href="kpiIndividualHref('individual')" :class="route().current('dashboard.kpi.individual*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja Individu</Link>
-                                <Link v-if="activePeriodId" :href="kpiIndividualHref('ops')" :class="route().current('dashboard.kpi.ops*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja OPS</Link>
-                                <Link v-if="activePeriodId" :href="kpiIndividualHref('monthly')" :class="route().current('dashboard.kpi.monthly*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Monthly</Link>
-                                <Link v-if="activePeriodId" :href="kpiIndividualHref('final')" :class="route().current('dashboard.kpi.final*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Nilai Akhir</Link>
+                                <Link :href="kpiIndividualHref('daily')" :class="isOwnKpiLeafActive('dashboard.kpi.daily*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Daily Report</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('individual')" :class="isOwnKpiLeafActive('dashboard.kpi.individual*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja Individu</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('ops')" :class="isOwnKpiLeafActive('dashboard.kpi.ops*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Kinerja OPS</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('monthly')" :class="isOwnKpiLeafActive('dashboard.kpi.monthly*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Monthly</Link>
+                                <Link v-if="activePeriodId" :href="kpiIndividualHref('final')" :class="isOwnKpiLeafActive('dashboard.kpi.final*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-8 items-center rounded-md px-2.5 py-1.5 text-xs font-semibold">Nilai Akhir</Link>
                             </div>
                         </div>
 
                         <!-- Submenu 2: KPI-Karyawan -->
-                        <Link v-if="showEmployeesMenu && activePeriodId" :href="route('dashboard.kpi.employees', activePeriodId)" :class="route().current('dashboard.kpi.employees*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">KPI-Karyawan</Link>
+                        <Link v-if="showEmployeesMenu && activePeriodId" :href="route('dashboard.kpi.employees', activePeriodId)" :class="isKpiEmployeeWorkspaceActive ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">KPI-Karyawan</Link>
 
                         <!-- Submenu 3: MPA -->
-                        <Link v-if="showMpaMenu && activePeriodId" :href="route('dashboard.kpi.mpa', activePeriodId)" :class="route().current('dashboard.kpi.mpa*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">MPA</Link>
+                        <Link v-if="showMpaMenu && activePeriodId" :href="route('dashboard.kpi.mpa', activePeriodId)" :class="isOwnKpiLeafActive('dashboard.kpi.mpa*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">MPA</Link>
                     </div>
                 </div>
             </nav>

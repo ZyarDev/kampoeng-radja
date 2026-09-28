@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Support\AttendanceAccess;
 use App\Support\ClosingEventAccess;
 use App\Support\KpiClock;
+use App\Services\KpiWorkingPeriodResolver;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,15 +42,18 @@ class HandleInertiaRequests extends Middleware
         );
 
         $user = $request->user();
-        // The sidebar must open the KPI period currently in progress. Using
-        // the latest database id can keep a user on an older month when a
-        // newer period has been created out of order or imported later.
+        // Keep calendar-active and KPI-working periods separate. During the
+        // first days of a new month the sidebar should continue the prior
+        // period's closing work, while Daily/Absensi can still use calendar
+        // time through the separate activePeriodId prop.
         $clockToday = KpiClock::today();
-        $activePeriod = \App\Models\KpiPeriod::query()
-            ->where('tahun', $clockToday->year)
-            ->where('bulan', $clockToday->month)
-            ->first()
-            ?? \App\Models\KpiPeriod::latest('id')->first();
+        $periods = \App\Models\KpiPeriod::query()
+            ->orderByDesc('tahun')
+            ->orderByDesc('bulan')
+            ->get();
+        $workingPeriodResolver = app(KpiWorkingPeriodResolver::class);
+        $activePeriod = $workingPeriodResolver->activeCalendarPeriod($periods, $clockToday);
+        $workingPeriod = $workingPeriodResolver->resolveDefault($periods, $clockToday);
         $roleName = $user?->role()->value('nama_role');
         $isHrdOrAdmin = in_array($roleName, ['admin', 'super_admin'], true) ||
             in_array(mb_strtolower(trim($user?->karyawan?->jabatan?->nama_jabatan ?? '')), ['hrd', 'direktur', 'dirut', 'direktur utama'], true);
@@ -57,21 +61,21 @@ class HandleInertiaRequests extends Middleware
             in_array(mb_strtolower(trim($user?->karyawan?->jabatan?->nama_jabatan ?? '')), ['hrd', 'direktur', 'dirut', 'direktur utama'], true);
 
         $isSupervisor = false;
-        if ($user?->karyawan_id && $activePeriod) {
-            $isSupervisor = \App\Models\KpiParticipant::where('kpi_period_id', $activePeriod->id)
+        if ($user?->karyawan_id && $workingPeriod) {
+            $isSupervisor = \App\Models\KpiParticipant::where('kpi_period_id', $workingPeriod->id)
                 ->where('atasan_langsung_id', $user->karyawan_id)
                 ->exists();
         }
 
         $isMpaEvaluator = false;
-        if ($user && $activePeriod) {
-            $isMpaEvaluator = $activePeriod->mpa_evaluator_id === $user->id;
+        if ($user && $workingPeriod) {
+            $isMpaEvaluator = $workingPeriod->mpa_evaluator_id === $user->id;
         }
 
         $hasPersonalKpiParticipant = false;
-        if ($user?->karyawan_id && $activePeriod) {
+        if ($user?->karyawan_id && $workingPeriod) {
             $hasPersonalKpiParticipant = \App\Models\KpiParticipant::query()
-                ->where('kpi_period_id', $activePeriod->id)
+                ->where('kpi_period_id', $workingPeriod->id)
                 ->where('karyawan_id', $user->karyawan_id)
                 ->exists();
         }
@@ -93,6 +97,7 @@ class HandleInertiaRequests extends Middleware
                 ],
                 'kpi' => [
                     'activePeriodId' => $activePeriod?->id,
+                    'workingPeriodId' => $workingPeriod?->id,
                     'personalEmployeeId' => $user?->karyawan_id,
                     'canViewPersonal' => $canViewPersonalKpi,
                     'canManagePeriod' => $roleName === 'super_admin',

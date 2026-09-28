@@ -19,10 +19,12 @@ use App\Models\KpiSignature;
 use App\Models\User;
 use App\Support\KpiClock;
 use App\Services\KpiPeriodService;
+use App\Services\KpiWorkingPeriodResolver;
 use App\Services\WorkCalendarService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -61,15 +63,13 @@ class KpiController extends Controller
             ->get();
 
         $clock = KpiClock::now();
-        $activePeriod = $periods->first(fn (KpiPeriod $period) =>
-            (int) $period->tahun === $clock->year
-            && (int) $period->bulan === $clock->month
-            && $period->status === 'active'
-        ) ?? $periods->first(fn (KpiPeriod $period) => $period->status === 'active') ?? $periods->first();
+        $workingPeriodResolver = app(KpiWorkingPeriodResolver::class);
+        $activePeriod = $workingPeriodResolver->activeCalendarPeriod($periods, $clock);
+        $defaultWorkingPeriod = $workingPeriodResolver->resolveDefault($periods, $clock);
         $selectedPeriodId = $request->integer('period_id');
         $selectedPeriod = $selectedPeriodId
             ? $periods->firstWhere('id', $selectedPeriodId)
-            : $activePeriod;
+            : $defaultWorkingPeriod;
 
         abort_if($selectedPeriodId && ! $selectedPeriod, 404, 'Periode KPI tidak ditemukan.');
 
@@ -799,12 +799,26 @@ class KpiController extends Controller
             $score->update(['parameter_snapshot' => $this->individualParameterSnapshot()]);
         }
 
-        // The period end is the target/deadline, not an opening gate.  A
-        // participant may complete KI during the period and until the normal
-        // deadline on day one of the following month.
-        $isWindowAllowed = ! KpiClock::now()->gt($this->normalEntryDeadline($period));
+        // The scheduler normally performs this transition. Keep the page
+        // consistent when it is opened after the deadline before a scheduler
+        // tick has run.
+        if ($score->status === 'draft' && KpiClock::now()->gt($this->normalEntryDeadline($period))) {
+            $score->update([
+                'status' => 'not_filled',
+                'submit_type' => 'automatic',
+                'score' => 0,
+                'value_locked' => true,
+                'submitted_at' => KpiClock::now(),
+            ]);
+            $score->refresh();
+        }
+
+        // Employee input opens at the last calendar day of the performance
+        // month and closes at the end of day one of the following month.
+        $isWindowAllowed = $this->isNormalEntryWindow($period);
         $windowState = $this->individualWindowState($period);
         $user = $request->user();
+        $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isSelf = $participant->karyawan_id === $user->karyawan_id;
         $signature = KpiSignature::where('signable_type', KpiIndividualScore::class)
             ->where('signable_id', $score->id)
@@ -818,6 +832,19 @@ class KpiController extends Controller
 
         if ($request->isMethod('post')) {
             abort_unless($isSelf, 403, 'Hanya pemilik penilaian yang dapat mengisi Kinerja Individu.');
+
+            if ($request->input('action') === 'recover_signature') {
+                abort_unless((bool) $score->value_locked, 422, 'Recovery hanya tersedia untuk nilai KI yang sudah terkunci.');
+                abort_if($employeeSignature, 422, 'Signature karyawan sudah tersedia.');
+                $this->assertEmployeeSignatureAvailable($user);
+
+                DB::transaction(function () use ($score, $participant, $user): void {
+                    $this->createComponentSignature($score, $participant, 'employee', $user, 'manual', 'Recovery signature karyawan pada record KI legacy.');
+                });
+
+                return back()->with('success', 'Signature Karyawan berhasil dipulihkan.');
+            }
+
             abort_unless($isWindowAllowed, 422, 'Batas normal pengisian Kinerja Individu telah berakhir.');
             abort_if((bool) $score->value_locked || $employeeSignature || in_array($score->status, ['approved', 'auto_signed', 'locked', 'not_filled'], true), 422, 'Nilai Kinerja Individu sudah dikunci.');
 
@@ -828,6 +855,16 @@ class KpiController extends Controller
                 'keterangan_capaian' => 'nullable|string|max:500',
                 'keterangan_aset' => 'nullable|string|max:500',
                 'keterangan_kebersihan' => 'nullable|string|max:500',
+            ], [
+                'capaian_departemen.min' => 'Capaian Departemen harus berada pada rentang 1–100.',
+                'capaian_departemen.max' => 'Capaian Departemen harus berada pada rentang 1–100.',
+                'perawatan_aset.min' => 'Perawatan Aset harus berada pada rentang 1–100.',
+                'perawatan_aset.max' => 'Perawatan Aset harus berada pada rentang 1–100.',
+                'kebersihan_kerapihan.min' => 'Kebersihan & Kerapihan harus berada pada rentang 1–100.',
+                'kebersihan_kerapihan.max' => 'Kebersihan & Kerapihan harus berada pada rentang 1–100.',
+                'capaian_departemen.required' => 'Capaian Departemen wajib diisi.',
+                'perawatan_aset.required' => 'Perawatan Aset wajib diisi.',
+                'kebersihan_kerapihan.required' => 'Kebersihan & Kerapihan wajib diisi.',
             ]);
 
             $capaian = (float) $v['capaian_departemen'];
@@ -836,21 +873,25 @@ class KpiController extends Controller
 
             $finalScore = round(($capaian * 0.70) + ($aset * 0.05) + ($kebersihan * 0.05), 2);
 
-            $score->update([
-                'capaian_departemen' => $capaian,
-                'perawatan_aset' => $aset,
-                'kebersihan_kerapihan' => $kebersihan,
-                'keterangan_capaian' => $v['keterangan_capaian'] ?? null,
-                'keterangan_aset' => $v['keterangan_aset'] ?? null,
-                'keterangan_kebersihan' => $v['keterangan_kebersihan'] ?? null,
-                'score' => $finalScore,
-                'status' => 'submitted',
-                'submitted_at' => KpiClock::now(),
-                'submit_type' => 'manual',
-                'value_locked' => true,
-            ]);
+            $this->assertEmployeeSignatureAvailable($user);
 
-            $this->createComponentSignature($score, $participant, 'employee', $user, 'manual', 'Karyawan menyimpan dan menandatangani Kinerja Individu.');
+            DB::transaction(function () use ($score, $participant, $user, $v, $capaian, $aset, $kebersihan, $finalScore): void {
+                $score->update([
+                    'capaian_departemen' => $capaian,
+                    'perawatan_aset' => $aset,
+                    'kebersihan_kerapihan' => $kebersihan,
+                    'keterangan_capaian' => $v['keterangan_capaian'] ?? null,
+                    'keterangan_aset' => $v['keterangan_aset'] ?? null,
+                    'keterangan_kebersihan' => $v['keterangan_kebersihan'] ?? null,
+                    'score' => $finalScore,
+                    'status' => 'submitted',
+                    'submitted_at' => KpiClock::now(),
+                    'submit_type' => 'manual',
+                    'value_locked' => true,
+                ]);
+
+                $this->createComponentSignature($score, $participant, 'employee', $user, 'manual', 'Karyawan menyimpan dan menandatangani Kinerja Individu.');
+            });
 
             return back()->with('success', 'Kinerja Individu berhasil disimpan.');
         }
@@ -866,7 +907,14 @@ class KpiController extends Controller
             'canEditValue' => (bool) ($isSelf && $isWindowAllowed && ! $score->value_locked && ! $employeeSignature && ! in_array($score->status, ['approved', 'auto_signed', 'locked', 'not_filled'], true)),
             'isLocked' => (bool) ($score->value_locked || in_array($score->status, ['approved', 'auto_signed', 'locked', 'not_filled'], true)),
             'canSignEmployee' => (bool) ($isSelf && $score->value_locked && ! $employeeSignature && $score->correction_pending_reapproval),
-            'canSignSupervisor' => (bool) ($score->status === 'submitted' && ($employeeSignature || $score->correction_pending_reapproval) && ! $signature && $user->karyawan_id && (int) $participant->atasan_langsung_id === (int) $user->karyawan_id),
+            'canRecoverEmployeeSignature' => (bool) ($isSelf && $score->value_locked && ! $employeeSignature && ! $score->correction_pending_reapproval && in_array($score->status, ['submitted', 'approved'], true)),
+            'canSignSupervisor' => (bool) ($score->status === 'submitted'
+                && ($employeeSignature || $score->correction_pending_reapproval)
+                && ! $signature
+                && (
+                    ($user->karyawan_id && (int) $participant->atasan_langsung_id === (int) $user->karyawan_id)
+                    || ($isSuperAdmin && ! $score->correction_pending_reapproval)
+                )),
             'effectiveScore' => $score->corrected_score !== null ? $score->corrected_score : $score->score,
             'correctionPendingReapproval' => (bool) $score->correction_pending_reapproval,
             'employeeSignature' => $employeeSignature ? $this->signaturePayload($employeeSignature) : null,
@@ -887,8 +935,10 @@ class KpiController extends Controller
     private function individualWindowState(KpiPeriod $period): string
     {
         $now = $this->kpiDebugNow();
-        $periodEnd = Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')->endOfMonth()->endOfDay();
-        return $now->gt($this->normalEntryDeadline($period)) ? 'closed' : ($now->lt($periodEnd) ? 'open' : 'open');
+        $periodStart = $this->normalEntryStart($period);
+        return $now->gt($this->normalEntryDeadline($period))
+            ? 'closed'
+            : ($now->lt($periodStart) ? 'upcoming' : 'open');
     }
 
     private function kpiDebugNow(): Carbon
@@ -915,8 +965,8 @@ class KpiController extends Controller
             ->orderBy('urutan', 'asc')
             ->get();
 
-        $isWindowAllowed = ! KpiClock::now()->gt($this->normalEntryDeadline($period));
-        $windowState = KpiClock::now()->gt($this->normalEntryDeadline($period)) ? 'closed' : 'open';
+        $isWindowAllowed = $this->isNormalEntryWindow($period);
+        $windowState = $this->entryWindowState($period);
         $user = $request->user();
         $isSelf = $participant->karyawan_id === $user->karyawan_id;
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
@@ -2105,8 +2155,47 @@ class KpiController extends Controller
             // Readiness is per participant. Monthly no longer needs a
             // period-wide publish or a calendar opening date; HRD finalization
             // and its signature are the prerequisite for the final score.
-            $isKiReady = $ki && in_array($ki->status, ['submitted', 'approved', 'auto_submitted', 'not_filled']);
-            $isOpsReady = $opsItems->isNotEmpty() && $opsItems->every(fn ($item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed', 'not_filled']));
+            $kiSignatures = $ki
+                ? KpiSignature::where('signable_type', KpiIndividualScore::class)
+                    ->where('signable_id', $ki->id)
+                    ->whereIn('role', ['employee', 'atasan_langsung'])
+                    ->get()
+                : collect();
+            $kiSupervisorApproved = $kiSignatures->contains('role', 'atasan_langsung');
+            $kiNotFilled = $ki && in_array($ki->status, ['auto_submitted', 'not_filled'], true);
+            $kiCorrected = $ki && $ki->corrected_score !== null;
+            $kiNormalApproved = $ki && $ki->status === 'approved' && $kiSignatures->contains('role', 'employee') && $kiSupervisorApproved;
+            $isKiReady = (bool) ($ki && ($kiNotFilled || $kiNormalApproved || ($kiCorrected && ! $ki->correction_pending_reapproval)));
+            $kiValuePublished = $kiNotFilled || $kiNormalApproved || $kiCorrected;
+            if (! $kiValuePublished) {
+                $totalScoreRaw = $opsScore + $mpaScore + $attScore + $rpScore;
+                $totalScoreFinal = round($totalScoreRaw, 2);
+                $kategori = $totalScoreFinal >= 80.00 ? 'Reward' : 'Punishment';
+            }
+            $opsSignatures = KpiSignature::where('signable_type', KpiParticipant::class)
+                ->where('signable_id', $p->id)
+                ->whereIn('role', ['employee', 'atasan_langsung'])
+                ->get();
+            $opsNotFilled = $opsItems->isNotEmpty() && $opsItems->every(fn (KpiOpsItem $item) => $item->status === 'not_filled');
+            $opsNormalApproved = $opsItems->isNotEmpty()
+                && $opsItems->every(fn (KpiOpsItem $item) => in_array($item->status, ['submitted', 'approved', 'locked', 'auto_signed'], true))
+                && $opsSignatures->contains('role', 'employee')
+                && $opsSignatures->contains('role', 'atasan_langsung');
+            $opsCorrected = (int) ($p->ops_correction_revision ?? 0) > 0;
+            $opsValuePublished = $opsNotFilled || $opsNormalApproved || $opsCorrected;
+            $isOpsReady = $opsValuePublished && (! $p->ops_correction_pending_reapproval || $opsCorrected);
+            if (! $opsValuePublished) {
+                $totalScoreRaw = ($kiValuePublished ? $kiScore : 0) + $mpaScore + $attScore + $rpScore;
+                $totalScoreFinal = round($totalScoreRaw, 2);
+                $kategori = $totalScoreFinal >= 80.00 ? 'Reward' : 'Punishment';
+            }
+            if (! $kiValuePublished || ! $opsValuePublished) {
+                $totalScoreRaw = ($kiValuePublished ? $kiScore : 0)
+                    + ($opsValuePublished ? $opsScore : 0)
+                    + $mpaScore + $attScore + $rpScore;
+                $totalScoreFinal = round($totalScoreRaw, 2);
+                $kategori = $totalScoreFinal >= 80.00 ? 'Reward' : 'Punishment';
+            }
             $requiredMonthlyRoles = ['hrd_publish', 'employee', 'atasan_langsung'];
             if ($p->atasan_kedua_id) {
                 $requiredMonthlyRoles[] = 'atasan_kedua';
@@ -2132,7 +2221,10 @@ class KpiController extends Controller
             // A completed final-score record was only created after all
             // readiness prerequisites passed. Preserve that workflow state
             // when the page is reopened through an employee-context route.
-            $isReady = $isReady || $record?->status === 'completed';
+            // A cached final-score row is only reusable when the current KI
+            // state still satisfies its approval gate. This prevents an old
+            // pre-gate row from publishing an employee-only submission.
+            $isReady = $isReady || ($record?->status === 'completed' && $isKiReady && $isOpsReady && $isMonthlyReady);
 
             if ($isReady) {
                 if (! $record) {
@@ -2162,6 +2254,19 @@ class KpiController extends Controller
                         'calculated_at' => $now,
                     ]);
                 }
+            } elseif ($record && ($kiCorrected || $opsCorrected)) {
+                // A correction changes the effective component immediately;
+                // re-approval only acknowledges that new value.
+                $record->update([
+                    'ki_score' => $kiValuePublished ? $kiScore : 0,
+                    'ops_score' => $opsValuePublished ? $opsScore : 0,
+                    'mpa_score' => $mpaScore,
+                    'attendance_score' => $attScore,
+                    'reward_punishment_score' => $rpScore,
+                    'score' => $totalScoreFinal,
+                    'kategori' => $kategori,
+                    'calculated_at' => $now,
+                ]);
             }
 
             // Keep employee signature separate from an already-signed
@@ -2185,8 +2290,8 @@ class KpiController extends Controller
                 'nama' => $p->karyawan?->nama ?? 'Karyawan',
                 'jabatan' => $p->jabatan_snapshot,
                 'departemen' => $p->departemen_snapshot,
-                'ki_score' => $kiScore,
-                'ops_score' => $opsScore,
+                'ki_score' => $kiValuePublished ? $kiScore : 0,
+                'ops_score' => $opsValuePublished ? $opsScore : 0,
                 'mpa_score' => $mpaScore,
                 'attendance_score' => $attScore,
                 'reward_punishment_score' => $rpScore,
@@ -2499,7 +2604,13 @@ class KpiController extends Controller
                 $ki = KpiIndividualScore::firstOrCreate(['kpi_participant_id' => $participant->id]);
                 $beforeData = $ki->toArray();
                 $existingSignatures = KpiSignature::where('signable_type', KpiIndividualScore::class)->where('signable_id', $ki->id)->whereIn('role', ['employee', 'atasan_langsung'])->get();
-                $normalComplete = $existingSignatures->count() >= 2 && $existingSignatures->every(fn (KpiSignature $s) => $s->source !== 'super_admin_takeover') && $ki->status === 'approved';
+                // A normally submitted employee record remains a normal
+                // correction flow even if the supervisor has not approved it
+                // yet. Only records generated as Not Diisi use automatic
+                // Super Admin takeover for both logical signature slots.
+                $wasNormallySubmitted = ($ki->submit_type === 'manual' || in_array($ki->status, ['submitted', 'approved'], true))
+                    && $ki->status !== 'not_filled'
+                    && $existingSignatures->contains(fn (KpiSignature $s) => $s->role === 'employee' && $s->source !== 'super_admin_takeover');
 
                 $capaian = (float) ($v['payload']['capaian_departemen'] ?? $ki->capaian_departemen ?? 0);
                 $aset = (float) ($v['payload']['perawatan_aset'] ?? $ki->perawatan_aset ?? 0);
@@ -2516,13 +2627,13 @@ class KpiController extends Controller
                     'value_locked' => true,
                     'corrected_score' => $score,
                     'correction_revision' => ((int) $ki->correction_revision) + 1,
-                    'correction_pending_reapproval' => $normalComplete,
+                    'correction_pending_reapproval' => $wasNormallySubmitted,
                     'corrected_by_user_id' => $user->id,
                     'corrected_at' => KpiClock::now(),
                     'correction_reason' => $v['reason'],
                 ]);
                 $ki->signatures()->delete();
-                if (! $normalComplete) {
+                if (! $wasNormallySubmitted) {
                     $this->createComponentSignature($ki, $participant, 'employee', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan karyawan.');
                     $this->createComponentSignature($ki, $participant, 'atasan_langsung', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan atasan langsung.');
                     $ki->update(['status' => 'approved', 'correction_pending_reapproval' => false]);
@@ -2680,7 +2791,11 @@ class KpiController extends Controller
         $roleName = $user->role()->value('nama_role');
         $isHrdOrDirektur = in_array(mb_strtolower($user->karyawan?->jabatan?->nama_jabatan ?? ''), ['direktur', 'hrd', 'dirut']) || $roleName === 'super_admin';
 
-        $activePeriod = KpiPeriod::latest('id')->first();
+        $periods = KpiPeriod::query()
+            ->orderByDesc('tahun')
+            ->orderByDesc('bulan')
+            ->get();
+        $activePeriod = app(KpiWorkingPeriodResolver::class)->resolveDefault($periods, KpiClock::now());
         if (! $activePeriod) {
             return response()->json(['total' => 0, 'items' => []]);
         }
@@ -2922,9 +3037,16 @@ class KpiController extends Controller
 
             $individual = $participant->individualScore;
             $individualStatus = $individual?->status;
-            $individualDone = in_array($individualStatus, ['approved', 'auto_signed', 'locked'], true);
+            $individualSignatureSet = $kiSignatures->get($individual?->id, collect());
+            $individualDone = (bool) ($individual && (
+                in_array($individualStatus, ['not_filled', 'auto_submitted'], true)
+                || ($individual->corrected_score !== null && ! $individual->correction_pending_reapproval)
+                || ($individualStatus === 'approved'
+                    && $individualSignatureSet->contains('role', 'employee')
+                    && $individualSignatureSet->contains('role', 'atasan_langsung'))
+            ));
             if ($individualDone) $stageCounts['individual']++;
-            $individualLabel = $individualDone ? ($kiSignatures->get($individual?->id, collect())->contains(fn ($s) => $s->source === 'super_admin_takeover') ? 'Dialihkan' : 'Selesai') : match ($individualStatus) {
+            $individualLabel = $individualDone ? ($individualSignatureSet->contains(fn ($s) => $s->source === 'super_admin_takeover') ? 'Dialihkan' : 'Selesai') : match ($individualStatus) {
                 'submitted' => 'Menunggu Approval', 'draft' => 'Draft', 'not_filled' => 'Belum', default => 'Belum',
             };
 
@@ -3116,11 +3238,38 @@ class KpiController extends Controller
             ->firstOrFail();
     }
 
-    /** Normal entry target/deadline: period end through day one next month. */
+    /** First moment employee result entry is allowed: last calendar day at 00:00. */
+    private function normalEntryStart(KpiPeriod $period): Carbon
+    {
+        return Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
+            ->endOfMonth()
+            ->startOfDay();
+    }
+
+    /** Normal entry target/deadline: through the end of day one next month. */
     private function normalEntryDeadline(KpiPeriod $period): Carbon
     {
         return Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
             ->addMonthNoOverflow()->startOfMonth()->endOfDay();
+    }
+
+    private function isNormalEntryWindow(KpiPeriod $period): bool
+    {
+        $now = KpiClock::now();
+
+        return $now->greaterThanOrEqualTo($this->normalEntryStart($period))
+            && $now->lessThanOrEqualTo($this->normalEntryDeadline($period));
+    }
+
+    private function entryWindowState(KpiPeriod $period): string
+    {
+        $now = KpiClock::now();
+
+        if ($now->lt($this->normalEntryStart($period))) {
+            return 'upcoming';
+        }
+
+        return $now->gt($this->normalEntryDeadline($period)) ? 'closed' : 'open';
     }
 
     /**
@@ -3151,6 +3300,16 @@ class KpiController extends Controller
             'signer_position' => $signer?->karyawan?->jabatan?->nama_jabatan,
             'signature_url' => $signature->signature_path ? Storage::disk('public')->url($signature->signature_path) : null,
         ];
+    }
+
+    private function assertEmployeeSignatureAvailable(User $user): void
+    {
+        $source = preg_replace('#^/?(?:storage|public)/#', '', trim((string) $user->karyawan?->foto_tanda_tangan));
+        if (! $user->karyawan || $source === '' || ! Storage::disk('public')->exists($source)) {
+            throw ValidationException::withMessages([
+                'signature' => 'Tanda tangan Anda belum tersedia. Lengkapi tanda tangan terlebih dahulu sebelum menyelesaikan Kinerja Individu.',
+            ]);
+        }
     }
 
     private function createComponentSignature(Model $signable, KpiParticipant $participant, string $role, User $actor, string $source = 'manual', string $reason = 'Manual Signature'): KpiSignature

@@ -389,17 +389,21 @@ const signatureState = (signature) =>
                 </section>
 
                 <div
-                    v-if="!isWindowAllowed && !isLocked"
+                    v-if="windowState === 'upcoming' && !isLocked"
                     class="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
                 >
                     <span>🔒</span
                     ><span
-                        ><strong>{{
-                            "Batas normal pengisian telah berakhir."
-                        }}</strong>
-                        Kinerja OPS periode {{ periodLabel }} sudah melewati
-                        deadline normal pengisian.</span
+                        ><strong>Pengisian belum dibuka.</strong>
+                        Kinerja OPS periode {{ periodLabel }} baru dapat diisi mulai hari terakhir bulan periode.</span
                     >
+                </div>
+                <div
+                    v-else-if="windowState === 'closed' && !isLocked"
+                    class="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
+                >
+                    <span>🔒</span><span><strong>Batas normal pengisian telah berakhir.</strong>
+                        Kinerja OPS periode {{ periodLabel }} sudah melewati deadline normal pengisian.</span>
                 </div>
 
                 <section

@@ -18,7 +18,9 @@ Artisan::command('kpi:process-deadlines', function () {
             // participant becomes ready when its HRD initial data is saved.
 
             // 2a. KI uses the canonical KPI clock.
-            if ($now->day >= 2 && $now->month === $period->bulan + 1) {
+            $entryDeadline = \Carbon\Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
+                ->addMonthNoOverflow()->startOfMonth()->endOfDay();
+            if ($now->gt($entryDeadline)) {
                 $score = \App\Models\KpiIndividualScore::firstOrCreate(['kpi_participant_id' => $participant->id]);
                 if ($score->status === 'draft') {
                     $score->update([
