@@ -30,6 +30,8 @@ return new class extends Migration
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
             $table->date('tanggal')->index();
+            $table->date('tanggal_selesai')->nullable()->index();
+            $table->enum('status_event', ['aktif', 'dibatalkan'])->default('aktif')->index();
             $table->string('konsumen', 150);
             $table->string('kontak', 20);
             $table->time('jam_kedatangan');
@@ -38,6 +40,9 @@ return new class extends Migration
             $table->integer('jumlah_pengunjung');
             $table->decimal('harga_total', 15, 2);
             $table->text('panitia')->nullable();
+            $table->text('alasan_pembatalan')->nullable();
+            $table->timestamp('cancelled_at')->nullable();
+            $table->foreignId('cancelled_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
         });
 

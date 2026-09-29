@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Carbon\Carbon;
+use DateTimeInterface;
 
 final class KpiClock
 {
@@ -25,6 +26,28 @@ final class KpiClock
     public static function today(): Carbon
     {
         return self::now()->startOfDay();
+    }
+
+    /**
+     * Format an existing KPI signature timestamp as local business time.
+     *
+     * Signature timestamps in the existing KPI tables are persisted as the
+     * Asia/Jakarta wall-clock value. Formatting an already-cast Carbon with
+     * timezone('Asia/Jakarta') would interpret that value as UTC and add
+     * seven hours. Keep the stored wall-clock value intact so UI and export
+     * share one representation.
+     */
+    public static function formatSignatureDateTime(DateTimeInterface|string|null $value, string $format = 'd/m/Y H:i'): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->format($format);
+        }
+
+        return Carbon::parse($value, self::TIMEZONE)->format($format);
     }
 
     public static function isDebugging(): bool

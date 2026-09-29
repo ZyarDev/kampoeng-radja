@@ -18,8 +18,7 @@ class KaryawanSeeder extends Seeder
 
         if (! is_file($datasetPath)) {
             throw new RuntimeException(
-                "Dataset karyawan asli belum tersedia. Salin database/seeders/data/karyawan.example.php " .
-                "menjadi database/seeders/data/karyawan.php lalu isi datanya."
+                'Dataset karyawan belum tersedia di database/seeders/data/karyawan.php.'
             );
         }
 
@@ -30,46 +29,74 @@ class KaryawanSeeder extends Seeder
         $departemen = Departemen::query()->pluck('id', 'nama_departemen');
         $penempatan = Penempatan::query()->pluck('id', 'nama_penempatan');
 
-        DB::transaction(function () use ($records, $jabatan, $departemen, $penempatan): void {
+        DB::transaction(function () use (
+            $records,
+            $jabatan,
+            $departemen,
+            $penempatan
+        ): void {
+            // PASS 1: buat/update seluruh karyawan tanpa menimpa supervisor/assets web.
             foreach ($records as $record) {
                 Karyawan::updateOrCreate(
-                    ['nik' => $record['nik']],
+                    ['nik' => (string) $record['nik']],
                     [
                         'nama' => $record['nama'],
-                        'tanggal_lahir' => $record['tanggal_lahir'],
-                        'tempat_lahir' => $record['tempat_lahir'],
-                        'jenis_kelamin' => $record['jenis_kelamin'],
-                        'alamat' => $record['alamat'],
-                        'agama' => $record['agama'],
-                        'status_perkawinan' => $record['status_perkawinan'],
-                        'pendidikan' => $record['pendidikan'],
+                        'tanggal_lahir' => $record['tanggal_lahir'] ?? null,
+                        'tempat_lahir' => $record['tempat_lahir'] ?? null,
+                        'jenis_kelamin' => $record['jenis_kelamin'] ?? null,
+                        'alamat' => $record['alamat'] ?? null,
+                        'agama' => $this->normalizeAgama($record['agama'] ?? null),
+                        'status_perkawinan' => $record['status_perkawinan'] ?? null,
+                        'pendidikan' => $record['pendidikan'] ?? null,
                         'jabatan_id' => $jabatan[$record['jabatan']],
-                        'departemen_id' => $departemen[$record['departemen']],
-                        'penempatan_id' => $penempatan[$record['penempatan']],
-                        'atasan_langsung_id' => null,
-                        'status_keaktifan' => $record['status_keaktifan'],
-                        'status_kerja' => $record['status_kerja'],
-                        'tanggal_masuk' => $record['tanggal_masuk'],
-                        'tanggal_keluar' => $record['tanggal_keluar'],
-                        'no_hp' => $record['no_hp'],
-                        'foto_ktp' => $record['foto_ktp'],
-                        'foto_tanda_tangan' => $record['foto_tanda_tangan'],
-                    ],
+                        'departemen_id' => filled($record['departemen'] ?? null)
+                            ? $departemen[$record['departemen']]
+                            : null,
+                        'penempatan_id' => filled($record['penempatan'] ?? null)
+                            ? $penempatan[$record['penempatan']]
+                            : null,
+                        'status_keaktifan' => $record['status_keaktifan'] ?? 'aktif',
+                        'status_kerja' => $record['status_kerja'] ?? null,
+                        'tanggal_masuk' => $record['tanggal_masuk'] ?? null,
+                        'tanggal_keluar' => $record['tanggal_keluar'] ?? null,
+                        'no_hp' => $record['no_hp'] ?? null,
+                    ]
                 );
             }
 
+            // PASS 2: resolve helper NIK atasan -> karyawan.atasan_langsung_id.
             $employeesByNik = Karyawan::query()
-                ->whereIn('nik', array_column($records, 'nik'))
+                ->whereIn(
+                    'nik',
+                    array_map(
+                        static fn ($nik): string => (string) $nik,
+                        array_column($records, 'nik')
+                    )
+                )
                 ->get()
-                ->keyBy('nik');
+                ->keyBy(
+                    static fn (Karyawan $employee): string => (string) $employee->nik
+                );
 
             foreach ($records as $record) {
-                $managerNik = $record['atasan_langsung_nik'];
-                $managerId = $managerNik === null ? null : $employeesByNik[$managerNik]->id;
+                $managerNik = $record['atasan_langsung_nik'] ?? null;
 
-                $employeesByNik[$record['nik']]->update([
-                    'atasan_langsung_id' => $managerId,
-                ]);
+                if ($managerNik === null || trim((string) $managerNik) === '') {
+                    continue;
+                }
+
+                $employeeNik = (string) $record['nik'];
+                $managerNik = (string) $managerNik;
+
+                $employee = $employeesByNik[$employeeNik];
+                $manager = $employeesByNik[$managerNik];
+
+                // Fresh seed akan terisi, rerun tidak menimpa perubahan web.
+                if ($employee->atasan_langsung_id === null) {
+                    $employee->update([
+                        'atasan_langsung_id' => $manager->id,
+                    ]);
+                }
             }
         });
     }
@@ -77,16 +104,40 @@ class KaryawanSeeder extends Seeder
     private function validateDataset(mixed $records): void
     {
         if (! is_array($records) || count($records) === 0) {
-            throw new RuntimeException('Dataset karyawan tidak memiliki record yang terisi.');
+            throw new RuntimeException(
+                'Dataset karyawan tidak memiliki record yang terisi.'
+            );
         }
 
-        $requiredFields = [
-            'nama', 'nik', 'tanggal_lahir', 'tempat_lahir', 'jenis_kelamin',
-            'alamat', 'agama', 'status_perkawinan', 'pendidikan', 'jabatan',
-            'departemen', 'penempatan', 'status_keaktifan', 'status_kerja',
-            'tanggal_masuk', 'tanggal_keluar', 'no_hp', 'foto_ktp',
-            'foto_tanda_tangan', 'atasan_langsung_nik',
+        $requiredKeys = [
+            'nama',
+            'nik',
+            'tanggal_lahir',
+            'tempat_lahir',
+            'jenis_kelamin',
+            'alamat',
+            'agama',
+            'status_perkawinan',
+            'pendidikan',
+            'jabatan',
+            'departemen',
+            'penempatan',
+            'atasan_langsung_nik',
+            'status_keaktifan',
+            'status_kerja',
+            'tanggal_masuk',
+            'tanggal_keluar',
+            'no_hp',
+            'foto_ktp',
+            'foto_tanda_tangan',
         ];
+
+        $requiredValues = [
+            'nama',
+            'nik',
+            'jabatan',
+        ];
+
         $niks = [];
 
         foreach ($records as $index => $record) {
@@ -96,46 +147,89 @@ class KaryawanSeeder extends Seeder
                 throw new RuntimeException("{$label} harus berupa array.");
             }
 
-            foreach ($requiredFields as $field) {
+            foreach ($requiredKeys as $field) {
                 if (! array_key_exists($field, $record)) {
-                    throw new RuntimeException("{$label} tidak memiliki field {$field}.");
+                    throw new RuntimeException(
+                        "{$label} tidak memiliki field {$field}."
+                    );
                 }
             }
 
-            foreach (['nama', 'nik', 'tempat_lahir', 'jenis_kelamin', 'alamat', 'agama', 'status_perkawinan', 'pendidikan', 'jabatan', 'departemen', 'penempatan', 'status_keaktifan', 'status_kerja', 'tanggal_masuk', 'no_hp'] as $field) {
-                if ($record[$field] === null || trim((string) $record[$field]) === '') {
-                    throw new RuntimeException("{$label}: field {$field} wajib diisi.");
+            foreach ($requiredValues as $field) {
+                if (
+                    $record[$field] === null ||
+                    trim((string) $record[$field]) === ''
+                ) {
+                    throw new RuntimeException(
+                        "{$label}: field {$field} wajib diisi."
+                    );
                 }
             }
 
-            if (isset($niks[$record['nik']])) {
-                throw new RuntimeException('NIK ' . $record['nik'] . ' duplikat pada record ' . ($index + 1) . '.');
-            }
+            $nik = (string) $record['nik'];
 
-            $niks[$record['nik']] = true;
-        }
-
-        foreach ($records as $index => $record) {
-            $managerNik = $record['atasan_langsung_nik'];
-
-            if ($managerNik !== null && ! isset($niks[$managerNik])) {
+            if (isset($niks[$nik])) {
                 throw new RuntimeException(
-                    'Atasan langsung dengan NIK ' . $managerNik .
-                    ' tidak ditemukan untuk record ' . ($index + 1) . '.'
+                    "NIK {$nik} duplikat pada record " . ($index + 1) . '.'
                 );
             }
 
-            if ($managerNik === $record['nik']) {
+            $niks[$nik] = true;
+        }
+
+        foreach ($records as $index => $record) {
+            $managerNik = $record['atasan_langsung_nik'] ?? null;
+
+            if ($managerNik === null || trim((string) $managerNik) === '') {
+                continue;
+            }
+
+            $employeeNik = (string) $record['nik'];
+            $managerNik = (string) $managerNik;
+
+            if (! isset($niks[$managerNik])) {
                 throw new RuntimeException(
-                    'Karyawan dengan NIK ' . $record['nik'] . ' tidak boleh menjadi atasan dirinya sendiri.'
+                    "Atasan langsung dengan NIK {$managerNik} tidak ditemukan " .
+                    'untuk record ' . ($index + 1) . '.'
+                );
+            }
+
+            if ($managerNik === $employeeNik) {
+                throw new RuntimeException(
+                    "Karyawan dengan NIK {$employeeNik} tidak boleh menjadi " .
+                    'atasan dirinya sendiri.'
                 );
             }
         }
 
         foreach ($records as $index => $record) {
-            $this->masterExists(Jabatan::class, 'nama_jabatan', $record['jabatan'], 'jabatan', $index);
-            $this->masterExists(Departemen::class, 'nama_departemen', $record['departemen'], 'departemen', $index);
-            $this->masterExists(Penempatan::class, 'nama_penempatan', $record['penempatan'], 'penempatan', $index);
+            $this->masterExists(
+                Jabatan::class,
+                'nama_jabatan',
+                $record['jabatan'],
+                'jabatan',
+                $index
+            );
+
+            if (filled($record['departemen'] ?? null)) {
+                $this->masterExists(
+                    Departemen::class,
+                    'nama_departemen',
+                    $record['departemen'],
+                    'departemen',
+                    $index
+                );
+            }
+
+            if (filled($record['penempatan'] ?? null)) {
+                $this->masterExists(
+                    Penempatan::class,
+                    'nama_penempatan',
+                    $record['penempatan'],
+                    'penempatan',
+                    $index
+                );
+            }
         }
     }
 
@@ -145,33 +239,43 @@ class KaryawanSeeder extends Seeder
             return [];
         }
 
-        $dataFields = [
-            'nama', 'nik', 'tanggal_lahir', 'tempat_lahir', 'jenis_kelamin',
-            'alamat', 'agama', 'status_perkawinan', 'pendidikan', 'jabatan',
-            'departemen', 'penempatan', 'status_kerja', 'tanggal_masuk', 'no_hp',
-        ];
+        return array_values(
+            array_filter(
+                $records,
+                static function (mixed $record): bool {
+                    if (! is_array($record)) {
+                        return false;
+                    }
 
-        return array_values(array_filter($records, function (mixed $record) use ($dataFields): bool {
-            if (! is_array($record)) {
-                return true;
-            }
-
-            foreach ($dataFields as $field) {
-                if (isset($record[$field]) && trim((string) $record[$field]) !== '') {
-                    return true;
+                    return ! empty($record['nik']) || ! empty($record['nama']);
                 }
-            }
-
-            return ($record['status_keaktifan'] ?? 'aktif') !== 'aktif';
-        }));
+            )
+        );
     }
 
-    /** @param class-string<\Illuminate\Database\Eloquent\Model> $model */
-    private function masterExists(string $model, string $column, string $value, string $label, int $index): void
+    private function normalizeAgama(mixed $agama): ?string
     {
+        if ($agama === null || trim((string) $agama) === '') {
+            return null;
+        }
+
+        return strtolower(trim((string) $agama));
+    }
+
+    /**
+     * @param class-string<\Illuminate\Database\Eloquent\Model> $model
+     */
+    private function masterExists(
+        string $model,
+        string $column,
+        string $value,
+        string $label,
+        int $index
+    ): void {
         if (! $model::query()->where($column, $value)->exists()) {
             throw new RuntimeException(
-                "Master {$label} '{$value}' tidak ditemukan untuk record " . ($index + 1) . '.'
+                "Master {$label} '{$value}' tidak ditemukan untuk record " .
+                ($index + 1) . '.'
             );
         }
     }

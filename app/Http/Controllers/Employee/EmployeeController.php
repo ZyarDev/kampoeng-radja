@@ -56,7 +56,8 @@ class EmployeeController extends Controller
                 'atasanLangsung:id,nama',
                 'user:id,karyawan_id',
             ])
-            ->orderBy('nama')
+            ->orderBy('nik')
+            ->orderBy('id')
             ->paginate(15)
             ->withQueryString()
             ->through(fn (Karyawan $employee): array => $this->employeeListPayload($employee, $roleName));

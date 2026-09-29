@@ -94,10 +94,12 @@ class DashboardController extends Controller
             $closingEventSummary = $this->closingEventSummary($today);
         }
 
+        $displayName = trim((string) ($employee->nama ?: $authUser->username ?: 'User'));
+
         return Inertia::render('Internal/Dashboard/Index', [
             'user' => [
-                'name' => $employee->nama,
-                'initials' => $this->initials($employee->nama),
+                'name' => $displayName,
+                'initials' => $this->initials($displayName),
                 'position' => $employee->jabatan?->nama_jabatan,
                 'roleName' => $roleName,
                 'roleLabel' => str($roleName)->replace('_', ' ')->title()->toString(),
@@ -256,8 +258,14 @@ class DashboardController extends Controller
         return $time ? substr($time, 0, 5) : null;
     }
 
-    private function initials(string $name): string
+    private function initials(?string $name): string
     {
+        $name = trim((string) $name);
+
+        if ($name === '') {
+            return 'U';
+        }
+
         return collect(preg_split('/\s+/', trim($name)))
             ->filter()
             ->take(2)

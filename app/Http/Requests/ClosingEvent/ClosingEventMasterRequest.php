@@ -10,7 +10,13 @@ class ClosingEventMasterRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return app(ClosingEventAccess::class)->for($this->user())['canManageMaster'];
+        $permissions = app(ClosingEventAccess::class)->for($this->user());
+
+        return match (strtoupper($this->method())) {
+            'POST' => $permissions['canCreateMaster'],
+            'PUT', 'PATCH' => $permissions['canUpdateMaster'],
+            default => false,
+        };
     }
 
     public function rules(): array

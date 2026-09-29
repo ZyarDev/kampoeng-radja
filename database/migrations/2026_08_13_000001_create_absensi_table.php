@@ -13,6 +13,8 @@ return new class extends Migration
             $table->foreignId('karyawan_id')->constrained('karyawan')->restrictOnDelete();
             $table->date('tanggal_absensi');
             $table->enum('status_kehadiran', ['H', 'I', 'A']);
+            $table->time('jam_masuk')->nullable();
+            $table->time('jam_keluar')->nullable();
             $table->string('keterangan', 255)->nullable();
             $table->timestamps();
 

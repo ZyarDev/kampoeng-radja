@@ -64,7 +64,11 @@ class EmployeeKpiExport
     private function populateFinalScore(): void
     {
         $sheet = $this->workbook->getSheetByName('Nilai Akhir'); $this->set($sheet, 'A2', 'Periode '.$this->periodLabel()); $this->identity($sheet, ['B5', 'B6', 'B7'], ['E5', 'E6', 'E7']);
-        $final = $this->final; foreach (['E11' => $final?->ki_score, 'E12' => $final?->ops_score, 'E13' => $final?->mpa_score, 'E14' => $this->finalAttendanceScore(), 'E15' => $final?->reward_punishment_score, 'E16' => $final?->score, 'E17' => $final?->kategori, 'E18' => $final?->reward_punishment_score] as $cell => $value) $this->set($sheet, $cell, $value ?? '-');
+        $final = $this->final; $monthlyPublished = $this->monthlySignaturesComplete();
+        $mpaScore = $monthlyPublished ? $final?->mpa_score : 0;
+        $attendanceScore = $monthlyPublished ? $this->finalAttendanceScore() : 0;
+        $finalScore = $monthlyPublished ? $final?->score : ((float) ($final?->score ?? 0) - (float) ($final?->mpa_score ?? 0) - (float) ($final?->attendance_score ?? 0));
+        foreach (['E11' => $final?->ki_score, 'E12' => $final?->ops_score, 'E13' => $mpaScore, 'E14' => $attendanceScore, 'E15' => $final?->reward_punishment_score, 'E16' => $finalScore, 'E17' => $monthlyPublished ? $final?->kategori : '-', 'E18' => $final?->reward_punishment_score] as $cell => $value) $this->set($sheet, $cell, $value ?? '-');
         $signature = $this->preferredSignature($this->finalSignatures, ['employee', 'atasan_langsung']); $employeeSignature = $this->finalSignatures->firstWhere('role', 'employee');
         $finalStatus = $employeeSignature ? '●  Selesai' : ($final?->status === 'completed' ? '●  Menunggu TTD Karyawan' : '●  '.($final?->status ?: 'Belum tersedia'));
         $this->set($sheet, 'C20', $finalStatus);
@@ -80,8 +84,8 @@ class EmployeeKpiExport
         $this->set($sheet, 'L19', $monthly?->mpa_score ?? '-'); $this->fillHrdRows($sheet, $monthly); $this->set($sheet, 'A32', $monthly?->performance ?? ''); $this->set($sheet, 'A37', $monthly?->coaching ?? '');
         foreach (['G42' => $monthly?->mpa_score, 'G43' => $this->monthlyAttendanceScore($monthly), 'G44' => $monthly?->reward_punishment_score, 'G45' => $monthly?->status] as $cell => $value) $this->set($sheet, $cell, $value ?? '-');
         $signatures = $monthly?->signatures ?? collect(); $this->signatureSlot($sheet, 'A49', 'A53', 'A54', 'A55', $this->signatureFor($signatures, 'hrd_publish'), 'Finalisasi HRD', 'Finalisasi HRD');
-        $second = $this->signatureFor($signatures, 'atasan_kedua'); $secondReplaced = ! $this->participant->atasan_kedua_id; if ($secondReplaced && ! $second) $second = $signatures->first(fn ($s) => $s->source === 'super_admin_takeover' && $s->role !== 'employee') ?: $signatures->first(fn ($s) => $s->signedBy?->role?->nama_role === 'super_admin' && $s->role !== 'employee');
-        $this->signatureSlot($sheet, 'D49', 'D53', 'D54', 'D55', $second, $second ? $this->signatureStatus($second) : 'Belum ditandatangani', $secondReplaced && $second ? 'Dialihkan' : null); $this->signatureSlot($sheet, 'H49', 'H53', 'H54', 'H55', $this->signatureFor($signatures, 'atasan_langsung'), 'Disetujui Atasan'); $this->signatureSlot($sheet, 'L49', 'L53', 'L54', 'L55', $this->signatureFor($signatures, 'employee'), 'Ditandatangani Karyawan');
+        $second = $this->signatureFor($signatures, 'atasan_kedua');
+        $this->signatureSlot($sheet, 'D49', 'D53', 'D54', 'D55', $second, $second ? $this->signatureStatus($second) : 'Belum ditandatangani'); $this->signatureSlot($sheet, 'H49', 'H53', 'H54', 'H55', $this->signatureFor($signatures, 'atasan_langsung'), 'Disetujui Atasan'); $this->signatureSlot($sheet, 'L49', 'L53', 'L54', 'L55', $this->signatureFor($signatures, 'employee'), 'Ditandatangani Karyawan');
     }
 
     private function populateIndividual(): void
@@ -151,6 +155,13 @@ class EmployeeKpiExport
         return $score ?? '-';
     }
 
+    private function monthlySignaturesComplete(): bool
+    {
+        $signedRoles = $this->participant->monthly?->signatures?->pluck('role') ?? collect();
+        return collect(['hrd_publish', 'employee', 'atasan_langsung', 'atasan_kedua'])
+            ->every(fn (string $role) => $signedRoles->contains($role));
+    }
+
     private function finalAttendanceScore(): float|string
     {
         if ($this->final && $this->final->attendance_score !== null && (float) $this->final->attendance_score !== 0.0) return $this->final->attendance_score;
@@ -193,13 +204,22 @@ class EmployeeKpiExport
 
     private function signatureSlot($sheet, string $placeholderCell, string $nameCell, string $dateCell, string $statusCell, ?KpiSignature $signature, ?string $fallbackStatus, ?string $statusOverride = null): void
     {
-        $this->set($sheet, $nameCell, $signature?->signedBy?->karyawan?->nama ?? $signature?->signedBy?->name ?? ($signature ? '-' : 'Belum ditandatangani')); $this->set($sheet, $dateCell, $signature?->signed_at ? $signature->signed_at->timezone('Asia/Jakarta')->locale('id')->translatedFormat('d F Y H:i').' WIB' : '-'); $this->set($sheet, $statusCell, $statusOverride ?: ($signature ? $this->signatureStatus($signature) : ($fallbackStatus ?: 'Tanda tangan digital tidak tersedia')));
+        $this->set($sheet, $nameCell, $signature?->signedBy?->karyawan?->nama ?? $signature?->signedBy?->name ?? ($signature ? '-' : 'Belum ditandatangani'));
+        $signedAt = KpiClock::formatSignatureDateTime($signature?->signed_at, 'd/m/Y H:i');
+        $this->set($sheet, $dateCell, $signedAt ? $signedAt.' WIB' : '-');
+        $this->set($sheet, $statusCell, $statusOverride ?: ($signature ? $this->signatureStatus($signature) : ($fallbackStatus ?: 'Tanda tangan digital tidak tersedia')));
         $path = $signature ? $this->storagePath($signature->signature_path) : null; $path = $path ? $this->trimSignatureImage($path) : null; $this->set($sheet, $placeholderCell, $path ? '' : 'Tanda tangan digital tidak tersedia'); if ($path) $this->drawing($sheet, $path, $placeholderCell, 76, 'Tanda tangan');
     }
 
     private function dailySignatureSlot($sheet, int $signRow, KpiDailyReport $report, ?KpiDailyReport $signature): void
     {
-        $this->set($sheet, "A{$signRow}", 'TANDA TANGAN DAILY REPORT'); $this->set($sheet, 'A'.($signRow + 1), $report->approval_source === 'super_admin_takeover' ? 'DIALIHKAN OLEH SUPER ADMIN' : 'ATASAN LANGSUNG'); $this->set($sheet, 'A'.($signRow + 2), $signature ? '' : 'Tanda tangan digital tidak tersedia'); $this->set($sheet, 'A'.($signRow + 6), $report->approver?->karyawan?->nama ?? $report->approver?->name ?? $report->atasanSnapshot?->nama ?? '-'); $this->set($sheet, 'A'.($signRow + 7), $report->approved_at ? $report->approved_at->timezone('Asia/Jakarta')->format('d/m/Y H:i').' WIB' : '-'); $this->set($sheet, 'A'.($signRow + 8), $this->dailyStatus($report));
+        $this->set($sheet, "A{$signRow}", 'TANDA TANGAN DAILY REPORT');
+        $this->set($sheet, 'A'.($signRow + 1), $report->approval_source === 'super_admin_takeover' ? 'DIALIHKAN OLEH SUPER ADMIN' : 'ATASAN LANGSUNG');
+        $this->set($sheet, 'A'.($signRow + 2), $signature ? '' : 'Tanda tangan digital tidak tersedia');
+        $this->set($sheet, 'A'.($signRow + 6), $report->approver?->karyawan?->nama ?? $report->approver?->name ?? $report->atasanSnapshot?->nama ?? '-');
+        $approvedAt = KpiClock::formatSignatureDateTime($report->approved_at);
+        $this->set($sheet, 'A'.($signRow + 7), $approvedAt ? $approvedAt.' WIB' : '-');
+        $this->set($sheet, 'A'.($signRow + 8), $this->dailyStatus($report));
         if ($path = $signature ? $this->storagePath($report->approval_signature_path) : null) { $path = $this->trimSignatureImage($path); if ($path) $this->drawing($sheet, $path, 'A'.($signRow + 2), 76, 'Tanda tangan Daily Report'); }
     }
 

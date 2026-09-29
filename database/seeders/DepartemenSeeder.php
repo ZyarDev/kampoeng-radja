@@ -9,8 +9,18 @@ class DepartemenSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (['Management', 'Marcom', 'Marketing', 'OPS 1', 'OPS 2'] as $name) {
-            Departemen::firstOrCreate(['nama_departemen' => $name]);
+        $departemen = [
+            'MANAJEMEN',
+            'MARCOM',
+            'MARKETING',
+            'OPERASIONAL',
+            'FAA',
+        ];
+
+        foreach ($departemen as $namaDepartemen) {
+            Departemen::firstOrCreate([
+                'nama_departemen' => $namaDepartemen,
+            ]);
         }
     }
 }

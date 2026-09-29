@@ -114,9 +114,10 @@ const resultMonthly = computed(() => props.monthlyDetail || {});
 const resultStatus = computed(() => {
     const status = resultMonthly.value.status;
     if (status === 'published' || status === 'completed') {
-        const required = ['hrd_publish', 'employee', 'atasan_langsung'];
-        if (props.participant?.atasan_kedua_id) required.push('atasan_kedua');
-        return required.every((role) => props.signatures?.[role]) ? 'Selesai' : (props.signatures?.hrd_publish ? 'Menunggu Tanda Tangan' : 'Menunggu Publish');
+        const required = ['hrd_publish', 'employee', 'atasan_langsung', 'atasan_kedua'];
+        if (!props.signatures?.hrd_publish) return 'Menunggu Publish';
+        if (!required.every((role) => props.signatures?.[role])) return 'Menunggu Tanda Tangan';
+        return required.some((role) => props.signatures?.[role]?.source === 'super_admin_takeover') ? 'Dialihkan' : 'Selesai';
     }
     if (status === 'completed') return 'Menunggu Publish';
     if (status === 'HRD_INCOMPLETE') return 'Menunggu HRD';
@@ -138,14 +139,15 @@ const normalizedGeneralScore = computed(() => {
 });
 const signatureCards = computed(() => [
     { key: 'hrd_publish', label: 'HRD', person: 'HRD / Direktur', canSign: false },
-    { key: 'atasan_kedua', label: 'Atasan Ke-2', person: props.participant?.atasan_kedua_snapshot || 'Tidak tersedia', canSign: props.canSignSecondSupervisor },
-    { key: 'atasan_langsung', label: 'Atasan Langsung', person: props.participant?.atasan_langsung_snapshot || 'Tidak tersedia', canSign: props.canSignSupervisor },
+    { key: 'atasan_kedua', label: 'Atasan Ke-2', person: props.participant?.atasan_kedua_snapshot || 'Super Admin', canSign: props.canSignSecondSupervisor },
+    { key: 'atasan_langsung', label: 'Atasan Langsung', person: props.participant?.atasan_langsung_snapshot || '-', canSign: props.canSignSupervisor },
     { key: 'employee', label: 'Karyawan', person: resultEmployee.value.nama || '-', canSign: props.canSignEmployee },
 ]);
-const signMonthly = () => {
+const signMonthly = (slot) => {
     router.post(route('dashboard.kpi.sign'), {
         signable_type: 'monthly',
         signable_id: resultMonthly.value.id,
+        signature_slot: slot,
     }, { preserveScroll: true });
 };
 const adjustmentRows = computed(() => {
@@ -235,7 +237,7 @@ const rewardRows = computed(() => {
                     <section class="rounded-xl border border-blue-100 bg-white p-4"><h2 class="text-lg font-bold text-[#0b347d]">💡 6. Rencana Perbaikan (coaching, counseling, dll)</h2><p class="mt-3 rounded-lg bg-[#f3f7fd] p-3 text-sm text-[#53709d]">{{ resultMonthly.coaching || 'Belum tersedia.' }}</p></section>
                 </div>
 
-                <section class="rounded-xl border border-blue-100 bg-white p-4 shadow-sm"><h2 class="mb-3 text-lg font-bold text-[#0b347d]">👤 Persetujuan dan Tanda Tangan</h2><div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"><div v-for="card in signatureCards" :key="card.key" class="rounded-lg border border-blue-100 p-3"><div class="flex items-center justify-between"><strong class="text-sm text-[#173f82]">{{ card.label }}</strong><span :class="signatures?.[card.key] ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'" class="rounded px-2 py-1 text-[10px] font-bold">{{ signatures?.[card.key] ? (signatures[card.key].source === 'automatic' ? 'Ditandatangani Otomatis' : 'Sudah Tanda Tangan') : (card.key === 'atasan_kedua' && !participant?.atasan_kedua_id ? 'N/A' : 'Menunggu Tanda Tangan') }}</span></div><div class="mt-3 flex min-h-[74px] items-center gap-3"><img v-if="signatures?.[card.key]?.signature_url" :src="signatures[card.key].signature_url" class="h-14 w-24 object-contain" alt="Tanda tangan"><div v-else class="flex h-14 w-24 items-center justify-center rounded bg-slate-50 text-xs text-slate-400">—</div><div class="text-xs"><div class="font-bold text-[#173f82]">{{ card.person }}</div><div class="text-[#53709d]">{{ signatures?.[card.key]?.signed_at || (signatures?.[card.key]?.reason ? signatures[card.key].reason : '-') }}</div><button v-if="card.canSign" type="button" @click="signMonthly()" class="mt-2 rounded bg-blue-600 px-2 py-1 text-[10px] font-bold text-white">Tanda Tangani Monthly</button></div></div></div></div></section>
+                <section class="rounded-xl border border-blue-100 bg-white p-4 shadow-sm"><h2 class="mb-3 text-lg font-bold text-[#0b347d]">👤 Persetujuan dan Tanda Tangan</h2><div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"><div v-for="card in signatureCards" :key="card.key" class="rounded-lg border border-blue-100 p-3"><div class="flex items-center justify-between"><strong class="text-sm text-[#173f82]">{{ card.label }}</strong><span :class="signatures?.[card.key] ? (signatures[card.key].source === 'super_admin_takeover' ? 'bg-emerald-800 text-white' : 'bg-emerald-100 text-emerald-700') : 'bg-amber-100 text-amber-700'" class="rounded px-2 py-1 text-[10px] font-bold">{{ signatures?.[card.key] ? (signatures[card.key].source === 'automatic' ? 'Ditandatangani Otomatis' : signatures[card.key].source === 'super_admin_takeover' ? 'Dialihkan' : 'Sudah Tanda Tangan') : 'Menunggu Tanda Tangan' }}</span></div><div class="mt-3 flex min-h-[74px] items-center gap-3"><img v-if="signatures?.[card.key]?.signature_url" :src="signatures[card.key].signature_url" class="h-14 w-24 object-contain" alt="Tanda tangan"><div v-else class="flex h-14 w-24 items-center justify-center rounded bg-slate-50 text-xs text-slate-400">—</div><div class="text-xs"><div class="font-bold text-[#173f82]">{{ signatures?.[card.key]?.signer_name || card.person }}</div><div class="text-[#53709d]">{{ signatures?.[card.key]?.signer_position || '' }}</div><div class="text-[#53709d]">{{ signatures?.[card.key]?.signed_at || (signatures?.[card.key]?.reason ? signatures[card.key].reason : '-') }}</div><button v-if="card.canSign" type="button" @click="signMonthly(card.key)" class="mt-2 rounded bg-blue-600 px-2 py-1 text-[10px] font-bold text-white">Tanda Tangani Monthly</button></div></div></div></div></section>
             </template>
 
             <template v-else>

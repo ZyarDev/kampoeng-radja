@@ -9,29 +9,32 @@ class PenempatanSeeder extends Seeder
 {
     public function run(): void
     {
-        foreach (
-            [
-                'Design',
-                'Sosmed',
-                'IT',
-                'Mark 1',
-                'Mark 2',
-                'OPS 1',
-                'OPS 2',
-                'Teknisi',
-                'Driver',
-                'Security',
-                'Admin',
-                'Tukang',
-                'Kebersihan',
-                'JWP',
-                'Resto',
-                'Front Gate / FG',
-                'Galery',
-                'Outbound',
-            ] as $placementName
-        ) {
-            Penempatan::firstOrCreate(['nama_penempatan' => $placementName]);
+        $penempatan = [
+            'MARCOM',
+            'DESIGN',
+            'IT',
+            'PROMOSI',
+            'GENERAL',
+            'MARKETING',
+            'OPERASIONAL',
+            'FRONT GATE',
+            'KIDDYLAND & FP',
+            'JWP',
+            'MOBIL GOLF',
+            'KERETA API',
+            'GALLERY & PAINTBALL',
+            'OUTBOUND',
+            'RESTO',
+            'OA & MM',
+            'RAINBOW SLIDE',
+            'TEKNISI',
+            'SEPEDA AIR',
+        ];
+
+        foreach ($penempatan as $namaPenempatan) {
+            Penempatan::firstOrCreate([
+                'nama_penempatan' => $namaPenempatan,
+            ]);
         }
     }
 }

@@ -51,11 +51,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasColumn('jabatan', 'role_id')) {
-            Schema::table('jabatan', function (Blueprint $table): void {
-                $table->dropForeign(['role_id']);
-                $table->dropColumn('role_id');
-            });
-        }
+        // role_id is part of the consolidated jabatan base schema. This
+        // migration now only preserves the historical role backfill, so it
+        // must not remove a column owned by the base migration on rollback.
     }
 };

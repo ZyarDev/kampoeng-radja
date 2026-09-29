@@ -45,17 +45,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('kpi_monthlies', function (Blueprint $table): void {
-            foreach (['hrd_initial_completed_by', 'evaluator_completed_by', 'hrd_finalized_by'] as $foreign) {
-                if (Schema::hasColumn('kpi_monthlies', $foreign)) {
-                    $table->dropForeign([$foreign]);
-                }
-            }
-            $columns = ['hrd_initial_completed_at', 'hrd_initial_completed_by', 'evaluator_started_at', 'evaluator_completed_at', 'evaluator_completed_by', 'hrd_finalized_at', 'hrd_finalized_by'];
-            $existing = array_values(array_filter($columns, fn (string $column): bool => Schema::hasColumn('kpi_monthlies', $column)));
-            if ($existing) {
-                $table->dropColumn($existing);
-            }
-        });
+        // Stage columns are part of the consolidated kpi_monthlies base
+        // schema. This migration now only performs historical backfill.
     }
 };

@@ -18,7 +18,7 @@ class ClosingEventMasterController extends Controller
     public function index(Request $request, ClosingEventAccess $access): Response
     {
         $permissions = $access->for($request->user());
-        abort_unless($permissions['canManageMaster'], 403);
+        abort_unless($permissions['canViewMaster'], 403);
 
         return Inertia::render('Internal/ClosingEvent/Masters', [
             'pic' => Pic::query()->withCount('closingEvents')->orderBy('nama_pic')->paginate(5, ['*'], 'pic_page')->withQueryString(),
@@ -29,15 +29,17 @@ class ClosingEventMasterController extends Controller
         ]);
     }
 
-    public function storePic(ClosingEventMasterRequest $request): RedirectResponse
+    public function storePic(ClosingEventMasterRequest $request, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canCreateMaster');
         Pic::create($request->validated());
 
         return back()->with('success', 'PIC berhasil ditambahkan.');
     }
 
-    public function updatePic(ClosingEventMasterRequest $request, Pic $pic): RedirectResponse
+    public function updatePic(ClosingEventMasterRequest $request, Pic $pic, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canUpdateMaster');
         $pic->update($request->validated());
 
         return back()->with('success', 'PIC berhasil diperbarui.');
@@ -45,20 +47,22 @@ class ClosingEventMasterController extends Controller
 
     public function destroyPic(Request $request, Pic $pic, ClosingEventAccess $access): RedirectResponse
     {
-        $this->authorizeMaster($request, $access);
+        $this->authorizeMaster($request, $access, 'canDeleteMaster');
 
         return $this->destroyMaster($pic, 'PIC');
     }
 
-    public function storeJenisEvent(ClosingEventMasterRequest $request): RedirectResponse
+    public function storeJenisEvent(ClosingEventMasterRequest $request, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canCreateMaster');
         JenisEvent::create($request->validated());
 
         return back()->with('success', 'Jenis Event berhasil ditambahkan.');
     }
 
-    public function updateJenisEvent(ClosingEventMasterRequest $request, JenisEvent $jenisEvent): RedirectResponse
+    public function updateJenisEvent(ClosingEventMasterRequest $request, JenisEvent $jenisEvent, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canUpdateMaster');
         $jenisEvent->update($request->validated());
 
         return back()->with('success', 'Jenis Event berhasil diperbarui.');
@@ -66,20 +70,22 @@ class ClosingEventMasterController extends Controller
 
     public function destroyJenisEvent(Request $request, JenisEvent $jenisEvent, ClosingEventAccess $access): RedirectResponse
     {
-        $this->authorizeMaster($request, $access);
+        $this->authorizeMaster($request, $access, 'canDeleteMaster');
 
         return $this->destroyMaster($jenisEvent, 'Jenis Event');
     }
 
-    public function storeLokasi(ClosingEventMasterRequest $request): RedirectResponse
+    public function storeLokasi(ClosingEventMasterRequest $request, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canCreateMaster');
         Lokasi::create($request->validated());
 
         return back()->with('success', 'Lokasi berhasil ditambahkan.');
     }
 
-    public function updateLokasi(ClosingEventMasterRequest $request, Lokasi $lokasi): RedirectResponse
+    public function updateLokasi(ClosingEventMasterRequest $request, Lokasi $lokasi, ClosingEventAccess $access): RedirectResponse
     {
+        $this->authorizeMaster($request, $access, 'canUpdateMaster');
         $lokasi->update($request->validated());
 
         return back()->with('success', 'Lokasi berhasil diperbarui.');
@@ -87,14 +93,14 @@ class ClosingEventMasterController extends Controller
 
     public function destroyLokasi(Request $request, Lokasi $lokasi, ClosingEventAccess $access): RedirectResponse
     {
-        $this->authorizeMaster($request, $access);
+        $this->authorizeMaster($request, $access, 'canDeleteMaster');
 
         return $this->destroyMaster($lokasi, 'Lokasi');
     }
 
-    private function authorizeMaster(Request $request, ClosingEventAccess $access): void
+    private function authorizeMaster(Request $request, ClosingEventAccess $access, string $capability): void
     {
-        abort_unless($access->for($request->user())['canManageMaster'], 403);
+        abort_unless($access->for($request->user())[$capability] ?? false, 403);
     }
 
     private function destroyMaster(Pic|JenisEvent|Lokasi $model, string $label): RedirectResponse

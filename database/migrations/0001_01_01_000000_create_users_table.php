@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('username', 100)->unique();
             $table->string('pin', 255);
             $table->boolean('is_active');
+            $table->boolean('must_change_pin')->default(false);
             $table->timestamps();
         });
 

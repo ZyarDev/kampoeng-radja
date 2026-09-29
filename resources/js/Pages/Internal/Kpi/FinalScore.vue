@@ -19,9 +19,7 @@ const { confirm } = useConfirmation();
 const scoreRecordLabel = (score) => score.signature?.source === 'super_admin_takeover'
   ? 'Dialihkan Super Admin'
   : (score.signature?.role === 'employee' ? 'Disetujui Karyawan' : 'Disetujui Atasan');
-const signedAtLabel = (score) => score.signature?.signed_at
-  ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(score.signature.signed_at))
-  : '-';
+const signedAtLabel = (score) => score.signature?.signed_at || '-';
 
 const categoryColor = (cat) => {
   switch (cat) {

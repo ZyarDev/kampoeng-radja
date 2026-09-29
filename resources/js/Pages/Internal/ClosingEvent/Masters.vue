@@ -135,6 +135,7 @@ const remove = async (group, item) => {
                             </p>
                         </div>
                         <button
+                            v-if="permissions.canCreateMaster"
                             type="button"
                             class="inline-flex h-8 items-center justify-center gap-1.5 self-start rounded-lg bg-[#1769e0] px-3.5 text-[11px] font-semibold text-white transition hover:bg-[#0756ba] sm:self-auto"
                             @click="open(group)"
@@ -187,6 +188,7 @@ const remove = async (group, item) => {
                                             class="flex justify-center gap-1.5"
                                         >
                                             <button
+                                                v-if="permissions.canUpdateMaster"
                                                 type="button"
                                                 class="grid h-7 w-7 place-items-center rounded-md border border-blue-100 text-[#1769e0] transition hover:bg-blue-50"
                                                 :title="`Edit ${entityLabel(group)}`"
@@ -207,6 +209,7 @@ const remove = async (group, item) => {
                                                 </svg>
                                             </button>
                                             <button
+                                                v-if="permissions.canDeleteMaster"
                                                 type="button"
                                                 class="grid h-7 w-7 place-items-center rounded-md border border-red-100 text-red-500 transition hover:bg-red-50"
                                                 :title="`Hapus ${entityLabel(group)}`"

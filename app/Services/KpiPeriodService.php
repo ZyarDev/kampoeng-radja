@@ -110,6 +110,6 @@ class KpiPeriodService
 
     private function excludedPosition(?string $position): bool
     {
-        return in_array(mb_strtolower(trim((string) $position)), ['dirut', 'direktur', 'direktur utama'], true);
+        return in_array(mb_strtolower(trim((string) $position)), ['komisaris', 'dirut', 'direktur', 'direktur utama'], true);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\AttendanceAccess;
+use App\Support\CmsAccess;
 use App\Support\ClosingEventAccess;
 use App\Support\KpiClock;
 use App\Services\KpiWorkingPeriodResolver;
@@ -35,11 +36,7 @@ class HandleInertiaRequests extends Middleware
     {
         $closingEventPermissions = app(ClosingEventAccess::class)->for($request->user());
         $attendancePermissions = app(AttendanceAccess::class)->for($request->user());
-        $cmsCanManage = in_array(
-            $request->user()?->role()->value('nama_role'),
-            ['admin', 'super_admin'],
-            true,
-        );
+        $cmsPermissions = app(CmsAccess::class)->for($request->user());
 
         $user = $request->user();
         // Keep calendar-active and KPI-working periods separate. During the
@@ -81,7 +78,7 @@ class HandleInertiaRequests extends Middleware
         }
         $normalizedPosition = mb_strtolower(trim((string) ($user?->karyawan?->jabatan?->nama_jabatan ?? '')));
         $canViewPersonalKpi = $hasPersonalKpiParticipant
-            && ! in_array($normalizedPosition, ['dirut', 'direktur', 'direktur utama'], true);
+            && ! in_array($normalizedPosition, ['komisaris', 'dirut', 'direktur', 'direktur utama'], true);
 
         return [
             ...parent::share($request),
@@ -89,9 +86,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'closingEvent' => $closingEventPermissions,
                 'attendance' => $attendancePermissions,
-                'cms' => [
-                    'canManage' => $cmsCanManage,
-                ],
+                'cms' => $cmsPermissions,
                 'employeeMasters' => [
                     'canManage' => $roleName === 'super_admin',
                 ],

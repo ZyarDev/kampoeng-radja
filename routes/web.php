@@ -100,7 +100,8 @@ Route::prefix('dashboard')
 
         Route::prefix('cms')
             ->name('cms.')
-            ->middleware('admin')
+            ->middleware('cms')
+            ->withoutMiddleware('active')
             ->group(function (): void {
                 Route::get('beranda', [EventPromoController::class, 'home'])->name('home');
                 Route::patch('beranda/hero', [HomeHeroController::class, 'update'])->name('home.hero.update');
@@ -173,7 +174,7 @@ Route::prefix('admin')
 
 Route::prefix('admin')
     ->name('admin.')
-    ->middleware(['auth', 'admin'])
+    ->middleware(['auth', 'cms'])
     ->group(function (): void {
         Route::resource('media-berita', MediaBeritaController::class)
             ->parameters(['media-berita' => 'mediaBerita'])

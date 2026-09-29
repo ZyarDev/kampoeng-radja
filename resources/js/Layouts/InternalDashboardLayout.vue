@@ -226,7 +226,7 @@ watch(
                     </button>
                     <div v-show="closingEventExpanded" id="closing-event-navigation" :class="sidebarCollapsed ? 'lg:hidden' : ''" class="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-3">
                         <Link :href="route('dashboard.closing-event.index')" :class="route().current('dashboard.closing-event.index') || route().current('dashboard.closing-event.create') || route().current('dashboard.closing-event.show') || route().current('dashboard.closing-event.edit') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">Data Closing Event</Link>
-                        <Link v-if="closingEventPermissions.canManageMaster" :href="route('dashboard.closing-event.master.index')" :class="route().current('dashboard.closing-event.master.*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">Master Data Event</Link>
+                        <Link v-if="closingEventPermissions.canViewMaster" :href="route('dashboard.closing-event.master.index')" :class="route().current('dashboard.closing-event.master.*') ? 'bg-[#2867e8] text-white shadow-sm' : 'text-[#64748b] hover:bg-slate-100 hover:text-[#0756ba]'" class="flex min-h-9 items-center rounded-md px-3 py-2 text-xs font-semibold">Master Data Event</Link>
                     </div>
                 </div>
                 <div v-if="cmsPermissions.canManage">

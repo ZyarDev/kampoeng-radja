@@ -23,8 +23,13 @@ return new class extends Migration
             $this->addAuditForeignKeys($table);
             $table->string('judul', 150);
             $table->string('deskripsi_singkat', 255);
+            $table->text('deskripsi_lengkap')->nullable();
             $table->string('poster', 255);
+            $table->date('tanggal_mulai')->nullable();
+            $table->date('tanggal_selesai')->nullable();
             $table->string('link_wa', 255)->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->unsignedInteger('urutan_tampil')->default(0);
             $table->timestamps();
         });
 
@@ -36,6 +41,8 @@ return new class extends Migration
             $table->string('foto', 255);
             $table->string('label', 50)->nullable();
             $table->boolean('is_unggulan');
+            $table->boolean('is_active')->default(true);
+            $table->unsignedInteger('urutan_tampil')->default(0);
             $table->timestamps();
         });
 
@@ -45,6 +52,7 @@ return new class extends Migration
             $table->string('nama_brand', 150);
             $table->string('logo', 255);
             $table->boolean('is_active');
+            $table->unsignedInteger('urutan_tampil')->default(0);
             $table->timestamps();
         });
 
