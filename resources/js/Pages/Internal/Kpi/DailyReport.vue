@@ -26,7 +26,6 @@ const statusLabel = computed(() => !props.isWorkingDay ? 'Libur' : props.report.
 const statusClass = computed(() => !props.isWorkingDay ? 'bg-slate-100 text-slate-600' : props.report.status === 'approved' ? (props.approvalInfo?.source === 'super_admin_takeover' ? 'bg-emerald-800 text-white' : 'bg-emerald-100 text-emerald-700') : props.report.status === 'waiting_approval' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700');
 const headerPeriod = computed(() => props.employeePeriods.find((period) => Number(period.id) === Number(props.activePeriodId)) || { id: props.activePeriodId });
 const formattedTargetDate = computed(() => new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' }).format(new Date(`${props.targetDate}T00:00:00+07:00`)));
-const mediaUrl = (path) => !path ? null : (path.startsWith('http') || path.startsWith('/') ? path : `/storage/${path}`);
 const calendarDays = computed(() => {
     const first = new Date(props.calendarYear, props.calendarMonth - 1, 1);
     const total = new Date(props.calendarYear, props.calendarMonth, 0).getDate();
@@ -47,7 +46,7 @@ const form = useForm({
         keterangan: activity.keterangan || '',
         foto_evidence: null,
         existing_foto: activity.bukti_path || null,
-        preview_url: mediaUrl(activity.bukti_path),
+        preview_url: activity.evidence_url || null,
     })) : [],
 });
 const changeDate = () => router.get(route('dashboard.kpi.daily'), { tanggal: selectedDate.value });

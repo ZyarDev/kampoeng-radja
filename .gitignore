@@ -19,6 +19,11 @@
 /storage/*.key
 /storage/pail
 /vendor
+/outputs/attendance-export-qa/
+/outputs/employee-export-qa/
+/outputs/closing-event-final-*/
+/outputs/screenshots/
+/outputs/test-output/
 database/seeders/data/karyawan.php
 Homestead.json
 Homestead.yaml

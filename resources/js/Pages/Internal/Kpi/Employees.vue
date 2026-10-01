@@ -244,7 +244,7 @@ const bulkApprove = async (group) => {
                 >
                     <label class="text-xs font-semibold text-[#5273a8] sm:w-64">Periode KPI
                         <select class="mt-1 h-10 w-full rounded-lg border-[#d5deea] bg-white text-sm font-semibold text-[#173467]" :value="period?.id" @change="changePeriod">
-                            <option v-for="item in periods" :key="item.id" :value="item.id">{{ monthNames[Number(item.bulan) - 1] || item.bulan }} {{ item.tahun }} · {{ item.status === 'draft' ? 'Persiapan' : 'Aktif' }}</option>
+                            <option v-for="item in periods" :key="item.id" :value="item.id">{{ monthNames[Number(item.bulan) - 1] || item.bulan }} {{ item.tahun }} · {{ ['draft', 'preparation'].includes(item.status) ? 'Persiapan' : 'Aktif' }}</option>
                         </select>
                     </label>
                     <input

@@ -227,7 +227,7 @@ Tidak ditemukan migration KPI.
 - Update Jabatan Karyawan yang memiliki akun menyinkronkan hanya `users.role_id` dalam transaksi yang sama; username, hash PIN, `is_active`, dan `must_change_pin` dipertahankan. Middleware membaca role dari database pada request berikutnya, bukan dari salinan session.
 - Foto KTP disimpan pada disk private `local` dan hanya dikirim melalui endpoint stream Super Admin; Admin/User tidak menerima path maupun URL dokumen.
 - Closing Event memakai capability backend dari kombinasi role, jabatan, dan departemen. Semua actor yang berhak melihat mendapat scope company-wide; delete dan master hanya Super Admin. Perubahan status memakai capability Update existing, sedangkan `cancelled_by/cancelled_at` selalu ditentukan backend.
-- Seeder development idempotent membuat role `super_admin`, `admin`, `user`, master IT/Admin Sistem, karyawan `ADMIN001`, dan akun lokal `admin` (PIN input development `123456`, tersimpan sebagai hash). Seeder hanya dipanggil otomatis pada environment local/testing.
+- Seeder development idempotent membuat role `super_admin`, `admin`, `user`, master IT/Admin Sistem, karyawan `[REDACTED DEVELOPMENT USERNAME]`, dan akun lokal `[REDACTED DEVELOPMENT USERNAME]` (PIN input development `[REDACTED DEVELOPMENT PIN]`, tersimpan sebagai hash). Seeder hanya dipanggil otomatis pada environment local/testing.
 
 ## Data Absensi Audit
 
@@ -537,3 +537,4 @@ Agent berikutnya cukup memulai dengan urutan ini:
 6. Untuk Landing Page, ikuti urutan baca di `docs/README.md` dan protokol Figma-first.
 7. Perbarui entry terbaru, hasil test/build, technical debt, mismatch, dan next step di file ini setelah pekerjaan selesai.
 8. Sebelum perubahan massal akun, jalankan `php artisan employees:sync-account-roles` sebagai dry-run; gunakan `--apply` hanya setelah daftar mismatch diperiksa.
+

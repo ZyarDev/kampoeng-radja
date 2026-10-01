@@ -54,6 +54,10 @@ Route::prefix('dashboard')
             Route::match(['get','post'],'daily', [KpiController::class, 'daily'])->name('daily');
             Route::post('daily/bulk-approve', [KpiController::class, 'bulkApproveDaily'])->name('daily.bulk-approve');
             Route::post('daily/{report}/approve', [KpiController::class, 'approveDaily'])->name('daily.approve');
+            Route::get('daily-activities/{activity}/evidence', [KpiController::class, 'dailyEvidence'])->name('daily.activity.evidence');
+            Route::get('daily/{report}/approval-signature', [KpiController::class, 'dailyApprovalSignature'])->name('daily.approval-signature');
+            Route::get('ops-items/{item}/evidence', [KpiController::class, 'opsEvidence'])->name('ops.item.evidence');
+            Route::get('signatures/{signature}/file', [KpiController::class, 'signatureFile'])->name('signature.file');
             Route::post('mpa/evaluator-assignment', [KpiController::class, 'assignEvaluator'])->name('mpa.assign');
             Route::post('period/{period}/mpa/takeover/{monthly}', [KpiController::class, 'takeoverMpa'])->name('mpa.takeover');
             Route::post('period/{period}/monthly/publish', [KpiController::class, 'publishMonthly'])->name('monthly.publish');
@@ -144,6 +148,7 @@ Route::prefix('dashboard')
             Route::delete('karyawan/{karyawan}', [EmployeeController::class, 'destroy'])->name('karyawan.destroy');
             Route::patch('karyawan/{karyawan}/exit', [EmployeeController::class, 'processExit'])->name('karyawan.exit');
             Route::get('karyawan/{karyawan}/foto-ktp', [EmployeeController::class, 'photo'])->name('karyawan.photo');
+            Route::get('karyawan/{karyawan}/signature', [EmployeeController::class, 'signature'])->name('karyawan.signature');
             Route::post('karyawan/{karyawan}/account', [EmployeeAccountController::class, 'store'])->name('karyawan.account.store');
             Route::patch('karyawan/{karyawan}/account/status', [EmployeeAccountController::class, 'updateStatus'])->name('karyawan.account.status');
             Route::patch('karyawan/{karyawan}/account/reset-pin', [EmployeeAccountController::class, 'resetPin'])->name('karyawan.account.reset-pin');

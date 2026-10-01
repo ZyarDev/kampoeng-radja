@@ -51,12 +51,6 @@ const supervisor = computed(() => props.participant?.atasan_langsung || {});
 const targetEmployeeId = computed(() =>
     props.isOwner ? null : props.participant?.karyawan_id,
 );
-const mediaUrl = (path) =>
-    !path
-        ? null
-        : path.startsWith("http") || path.startsWith("/")
-          ? path
-          : `/storage/${path}`;
 const formatWhole = (value) =>
     Number(value || 0).toLocaleString("id-ID", { maximumFractionDigits: 0 });
 
@@ -80,7 +74,7 @@ const form = useForm({
         existing_bukti: item.bukti_path || null,
         remove_bukti: false,
         bukti_evidence: null,
-        preview_url: mediaUrl(item.bukti_path),
+        preview_url: item.evidence_url || null,
     })),
 });
 
@@ -673,20 +667,20 @@ const signatureState = (signature) =>
                                                     isEditable
                                                 "
                                                 type="button"
-                                                class="grid h-8 w-8 shrink-0 place-items-center rounded border border-slate-200 text-base text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+                                                class="grid h-8 w-8 shrink-0 place-items-center rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
                                                 title="Hapus bukti"
                                                 @click="removeEvidence(index)"
                                             >
-                                                ×
+                                                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16" stroke-linecap="round"/><path d="M10 11v6M14 11v6" stroke-linecap="round"/><path d="m6 7 1 13h10l1-13M9 7V4h6v3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                             </button>
                                             <button
                                                 v-if="isParameterEditable"
                                                 type="button"
-                                                class="grid h-8 w-8 shrink-0 place-items-center rounded border border-slate-200 text-base text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+                                                class="grid h-8 w-8 shrink-0 place-items-center rounded border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
                                                 title="Hapus parameter"
                                                 @click="removeItem(index)"
                                             >
-                                                ×
+                                                <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16" stroke-linecap="round"/><path d="M10 11v6M14 11v6" stroke-linecap="round"/><path d="m6 7 1 13h10l1-13M9 7V4h6v3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                             </button>
                                         </div>
                                     </td>

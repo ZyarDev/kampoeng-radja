@@ -13,7 +13,7 @@ class CreateEmployee
     public function handle(array $data, ?UploadedFile $photo, ?UploadedFile $signature): Karyawan
     {
         $path = $photo?->store('employee-ktp', 'local');
-        $signaturePath = $signature?->store('karyawan/tanda-tangan', 'public');
+        $signaturePath = $signature?->store('karyawan/tanda-tangan', 'local');
 
         try {
             return DB::transaction(function () use ($data, $path, $signaturePath): Karyawan {
@@ -30,7 +30,7 @@ class CreateEmployee
                 Storage::disk('local')->delete($path);
             }
             if ($signaturePath) {
-                Storage::disk('public')->delete($signaturePath);
+                Storage::disk('local')->delete($signaturePath);
             }
 
             throw $exception;

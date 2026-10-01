@@ -15,7 +15,7 @@ class UpdateEmployee
         $oldPath = $employee->foto_ktp;
         $oldSignaturePath = $employee->foto_tanda_tangan;
         $newPath = $photo?->store('employee-ktp', 'local');
-        $newSignaturePath = $signature?->store('karyawan/tanda-tangan', 'public');
+        $newSignaturePath = $signature?->store('karyawan/tanda-tangan', 'local');
         try {
             DB::transaction(function () use ($employee, $data, $newPath, $newSignaturePath): void {
                 unset($data['foto_ktp'], $data['foto_tanda_tangan']);
@@ -36,7 +36,7 @@ class UpdateEmployee
                 Storage::disk('local')->delete($newPath);
             }
             if ($newSignaturePath) {
-                Storage::disk('public')->delete($newSignaturePath);
+                Storage::disk('local')->delete($newSignaturePath);
             }
 
             throw $exception;
@@ -46,7 +46,7 @@ class UpdateEmployee
             Storage::disk('local')->delete($oldPath);
         }
         if ($newSignaturePath && $oldSignaturePath) {
-            Storage::disk('public')->delete($oldSignaturePath);
+            Storage::disk('local')->delete($oldSignaturePath);
         }
 
         return $employee->refresh();

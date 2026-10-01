@@ -40,7 +40,7 @@ const go = (id) => { if (id) router.get(destination(props.activeTab, id)); };
             <span v-if="statusLabel" class="inline-flex w-fit items-center rounded-lg px-3 py-2 text-xs font-bold" :class="statusClass">● {{ statusLabel }}</span>
         </div>
         <div class="mt-5 flex flex-col gap-3 rounded-xl border border-[#dce5f1] bg-[#f8fbff] p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><p class="text-[11px] font-bold uppercase tracking-[0.12em] text-[#6079a4]">Periode KPI</p><p class="mt-1 text-xs font-semibold" :class="selectedPeriod?.is_active ? 'text-emerald-700' : 'text-slate-500'">{{ selectedPeriod?.is_active ? 'Periode Aktif' : 'Periode Historis' }}</p></div>
+            <div><p class="text-[11px] font-bold uppercase tracking-[0.12em] text-[#6079a4]">Periode KPI</p><p class="mt-1 text-xs font-semibold" :class="selectedPeriod?.is_preparation ? 'text-amber-700' : selectedPeriod?.is_active ? 'text-emerald-700' : 'text-slate-500'">{{ selectedPeriod?.is_preparation ? 'Periode Persiapan' : selectedPeriod?.is_active ? 'Periode Aktif' : 'Periode Historis' }}</p></div>
             <div class="flex items-center gap-2">
                 <button type="button" aria-label="Periode sebelumnya" :disabled="!previousPeriod" class="grid h-9 w-9 place-items-center rounded-lg border border-[#cbd8ea] text-lg text-[#173467] disabled:cursor-not-allowed disabled:opacity-35" @click="go(previousPeriod?.id)">‹</button>
                 <select :value="periodId" class="h-9 min-w-[180px] rounded-lg border-[#cbd8ea] bg-white text-sm font-semibold text-[#173467]" aria-label="Pilih periode KPI" @change="go(Number($event.target.value))">

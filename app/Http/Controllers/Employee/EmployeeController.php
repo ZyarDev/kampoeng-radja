@@ -284,7 +284,7 @@ class EmployeeController extends Controller
                 'ktpPhotoUrl' => filled($employee->foto_ktp) ? route('dashboard.karyawan.photo', $employee) : null,
                 'hasSignaturePhoto' => filled($employee->foto_tanda_tangan),
                 'signaturePhotoUrl' => filled($employee->foto_tanda_tangan)
-                    ? Storage::disk('public')->url($employee->foto_tanda_tangan)
+                    ? route('dashboard.karyawan.signature', $employee)
                     : null,
                 'account' => $account
                     ? [
@@ -303,6 +303,19 @@ class EmployeeController extends Controller
         }
 
         return $payload;
+    }
+
+    public function signature(Request $request, Karyawan $karyawan)
+    {
+        abort_unless($request->user()?->role?->nama_role === 'super_admin', 403);
+        $path = ltrim(preg_replace('#^/?(?:storage/|public/)#', '', (string) $karyawan->foto_tanda_tangan), '/');
+        abort_if($path === '', 404);
+        foreach (['local', 'public'] as $disk) {
+            if (Storage::disk($disk)->exists($path)) {
+                return Storage::disk($disk)->response($path);
+            }
+        }
+        abort(404);
     }
 
     private function employeeCommonPayload(Karyawan $employee): array

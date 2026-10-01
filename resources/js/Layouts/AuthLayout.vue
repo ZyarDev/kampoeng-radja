@@ -1,17 +1,13 @@
-<script setup>
-import { Link } from "@inertiajs/vue3";
-</script>
-
 <template>
     <div class="auth-shell">
         <div class="auth-card">
-            <Link href="/" class="auth-logo-link" aria-label="Kampoeng Radja">
+            <div class="auth-logo-container">
                 <img
-                    src="/assets/figma/logo-main-transparent.png"
+                    src="/assets/brand/kampoeng-radja-navbar.png"
                     alt="Kampoeng Radja"
                     class="auth-logo"
                 />
-            </Link>
+            </div>
             <div class="auth-content">
                 <slot />
             </div>
@@ -39,7 +35,7 @@ import { Link } from "@inertiajs/vue3";
     padding: 2.25rem 2.25rem 2.5rem;
 }
 
-.auth-logo-link {
+.auth-logo-container {
     display: flex;
     justify-content: center;
     margin: 0 auto 2.25rem;
@@ -61,7 +57,7 @@ import { Link } from "@inertiajs/vue3";
         background-repeat: no-repeat;
     }
     .auth-card { padding: 2rem 1.5rem 2.25rem; border-radius: 18px; }
-    .auth-logo-link { margin-bottom: 1.75rem; }
+    .auth-logo-container { margin-bottom: 1.75rem; }
     .auth-logo { width: 170px; }
 }
 </style>

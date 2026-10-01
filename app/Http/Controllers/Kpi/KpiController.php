@@ -51,6 +51,7 @@ class KpiController extends Controller
         app(KpiPeriodService::class)->runLifecycle(KpiClock::now());
 
         $periods = KpiPeriod::query()
+            ->when(! $canManageActions, fn ($query) => $query->where('status', 'active'))
             ->with([
                 'evaluator.karyawan',
                 'participants.karyawan.user',
@@ -143,6 +144,7 @@ class KpiController extends Controller
         app(KpiPeriodService::class)->runLifecycle(KpiClock::now());
         $user = $request->user();
         $isSuper = $user->role()->value('nama_role') === 'super_admin';
+        $this->ensureViewableKpiPeriod($user, $period);
 
         $query = $period->participants()
             ->with(['karyawan.jabatan', 'karyawan.departemen', 'karyawan.penempatan'])
@@ -369,6 +371,7 @@ class KpiController extends Controller
             ->where('status', 'active')
             ->value('id');
         $periodOptions = KpiPeriod::query()
+            ->when(! $isSuper, fn ($query) => $query->where('status', 'active'))
             ->orderByDesc('tahun')->orderByDesc('bulan')
             ->get(['id', 'bulan', 'tahun', 'status'])
             ->map(fn (KpiPeriod $item) => [
@@ -408,11 +411,24 @@ class KpiController extends Controller
         $employee->loadMissing(['jabatan', 'departemen', 'penempatan', 'atasanLangsung']);
         abort_if($this->isExcludedKpiPosition($employee->jabatan?->nama_jabatan), 403, 'Jabatan ini tidak wajib mengisi Daily Report.');
 
-        $employeePeriods = $this->employeePeriodOptions($employee->id);
+        $employeePeriods = $this->employeePeriodOptions($employee->id, $viewer);
         $selectedPeriodId = $request->integer('period_id')
             ?: (int) (collect($employeePeriods)->firstWhere('is_active', true)['id'] ?? collect($employeePeriods)->last()['id']);
         $selectedPeriod = KpiPeriod::query()->findOrFail($selectedPeriodId);
         abort_unless(collect($employeePeriods)->contains(fn ($item) => (int) $item['id'] === $selectedPeriodId), 404, 'Karyawan tidak tercatat pada periode KPI ini.');
+        $this->ensureViewableKpiPeriod($viewer, $selectedPeriod);
+
+        if ($this->isPreparationPeriod($selectedPeriod)) {
+            return $this->preparationPage(
+                $request,
+                $selectedPeriod,
+                'daily',
+                'Daily Report',
+                'Aktivitas Daily Report untuk periode ini belum dibuka.',
+                $employee
+            );
+        }
+
         $this->ensureActiveKpiPeriod($selectedPeriod);
         $periodStart = Carbon::create($selectedPeriod->tahun, $selectedPeriod->bulan, 1, 0, 0, 0, 'Asia/Jakarta');
         $periodEnd = $periodStart->copy()->endOfMonth();
@@ -449,6 +465,7 @@ class KpiController extends Controller
         $statusKehadiran = $absensi?->status_kehadiran;
 
         if ($request->isMethod('post')) {
+            $this->ensureActiveKpiPeriod($selectedPeriod);
             abort_unless($isOwner, 403, 'Daily Report bawahan hanya dapat dimonitor, bukan diedit.');
             abort_unless($isWorkingDay, 422, 'Tanggal tersebut merupakan hari libur. Daily Report tidak diperlukan.');
             abort_unless($isEditable, 422, 'Hanya dapat mengisi/edit daily report untuk hari ini atau kemarin.');
@@ -484,7 +501,7 @@ class KpiController extends Controller
 
                     if ($request->hasFile("activities.{$index}.foto_evidence")) {
                         $file = $request->file("activities.{$index}.foto_evidence");
-                        $storedPath = $file->store('kpi/daily-evidence', 'public');
+                        $storedPath = $file->store('kpi/daily-evidence', 'local');
                         $fotoPath = $storedPath;
                     }
                     if ($fotoPath) $newPaths[] = $fotoPath;
@@ -504,7 +521,7 @@ class KpiController extends Controller
                     'atasan_snapshot_id' => $report->atasan_snapshot_id ?? $request->user()->karyawan?->atasan_langsung_id,
                 ]);
                 foreach (array_diff($oldPaths, $newPaths) as $oldPath) {
-                    if (! str_starts_with($oldPath, 'http')) Storage::disk('public')->delete($oldPath);
+                    if (! str_starts_with($oldPath, 'http')) $this->deleteStoredFile($oldPath);
                 }
             });
 
@@ -569,8 +586,8 @@ class KpiController extends Controller
         $approvalEmployee = ($isSuperAdmin && ! ($isDirectSupervisor && $withinApprovalWindow))
             ? $viewer->karyawan
             : ($report->approver?->karyawan ?? $report->atasanSnapshot);
-        $approvalSignaturePath = $this->normalisePublicSignaturePath($approvalEmployee?->foto_tanda_tangan);
-        $signerHasSignature = $approvalSignaturePath && Storage::disk('public')->exists($approvalSignaturePath);
+        $approvalSignaturePath = $this->normaliseStoredPath($approvalEmployee?->foto_tanda_tangan);
+        $signerHasSignature = $approvalSignaturePath && $this->storedFileLocation($approvalSignaturePath);
         $approvalMode = $report->status !== 'waiting_approval' ? null : match (true) {
             $isDirectSupervisor && $withinApprovalWindow => 'direct_supervisor',
             $isSuperAdmin => 'super_admin_takeover',
@@ -587,7 +604,12 @@ class KpiController extends Controller
 
         return inertia('Internal/Kpi/DailyReport', [
             'user' => $this->userPayload($request),
-            'report' => $report->exists ? $report->load(['activities', 'approver.karyawan', 'atasanSnapshot.jabatan']) : $report,
+            'report' => $report->exists ? tap($report->load(['activities', 'approver.karyawan', 'atasanSnapshot.jabatan']), function ($loadedReport) {
+                $loadedReport->activities->each(fn (KpiDailyActivity $activity) => $activity->setAttribute(
+                    'evidence_url',
+                    $activity->bukti_path ? route('dashboard.kpi.daily.activity.evidence', $activity) : null
+                ));
+            }) : $report,
             'targetDate' => $targetDate->toDateString(),
             'dayStatus' => $dayStatus,
             'isWorkingDay' => $isWorkingDay,
@@ -619,8 +641,8 @@ class KpiController extends Controller
                 'signer_has_signature' => (bool) $signerHasSignature,
                 'approval_window_expired' => $report->status === 'waiting_approval' && $isDirectSupervisor && ! $withinApprovalWindow,
                 'signature_url' => $report->approval_signature_path
-                    ? Storage::disk('public')->url($report->approval_signature_path)
-                    : ($signerHasSignature ? Storage::disk('public')->url($approvalSignaturePath) : null),
+                    ? route('dashboard.kpi.daily.approval-signature', $report)
+                    : null,
             ],
             'activePeriodId' => $selectedPeriod->id,
             'employeePeriods' => $employeePeriods,
@@ -635,6 +657,65 @@ class KpiController extends Controller
     /**
      * Single Approve Daily Report
      */
+    public function dailyEvidence(Request $request, KpiDailyActivity $activity)
+    {
+        $activity->load('report');
+        abort_unless($this->canViewDailyReport($request->user(), $activity->report), 403);
+        return $this->privateFileResponse($activity->bukti_path);
+    }
+
+    public function dailyApprovalSignature(Request $request, KpiDailyReport $report)
+    {
+        abort_unless($this->canViewDailyReport($request->user(), $report), 403);
+        return $this->privateFileResponse($report->approval_signature_path);
+    }
+
+    public function opsEvidence(Request $request, KpiOpsItem $item)
+    {
+        $item->load('participant');
+        abort_unless($this->canViewKpiParticipant($request->user(), $item->participant), 403);
+        return $this->privateFileResponse($item->bukti_path);
+    }
+
+    public function signatureFile(Request $request, KpiSignature $signature)
+    {
+        $participant = match ($signature->signable_type) {
+            KpiParticipant::class => KpiParticipant::find($signature->signable_id),
+            KpiIndividualScore::class => KpiIndividualScore::with('participant')->find($signature->signable_id)?->participant,
+            KpiMonthly::class => KpiMonthly::with('participant')->find($signature->signable_id)?->participant,
+            KpiFinalScore::class => KpiFinalScore::with('participant')->find($signature->signable_id)?->participant,
+            default => null,
+        };
+        abort_unless($participant && $this->canViewKpiParticipant($request->user(), $participant), 403);
+        return $this->privateFileResponse($signature->signature_path);
+    }
+
+    private function privateFileResponse(?string $path)
+    {
+        $location = $this->storedFileLocation($path);
+        abort_if(! $location, 404);
+        return Storage::disk($location['disk'])->response($location['path']);
+    }
+
+    private function canViewDailyReport(User $user, ?KpiDailyReport $report): bool
+    {
+        if (! $report) return false;
+        if ($user->role?->nama_role === 'super_admin') return true;
+        if ((int) $user->karyawan_id === (int) $report->karyawan_id) return true;
+        if ((int) $user->karyawan_id === (int) $report->atasan_snapshot_id) return true;
+        $period = KpiPeriod::where('bulan', $report->tanggal?->month)->where('tahun', $report->tanggal?->year)->first();
+        return $period && in_array((int) $report->karyawan_id, $this->getAllSubordinateKaryawanIds((int) $user->karyawan_id, $period->id), true);
+    }
+
+    private function canViewKpiParticipant(User $user, ?KpiParticipant $participant): bool
+    {
+        if (! $participant) return false;
+        if ($user->role?->nama_role === 'super_admin') return true;
+        if ((int) $user->karyawan_id === (int) $participant->karyawan_id) return true;
+        if ((int) $user->karyawan_id === (int) $participant->atasan_langsung_id || (int) $user->karyawan_id === (int) $participant->atasan_kedua_id) return true;
+        return in_array((int) $participant->karyawan_id, $this->getAllSubordinateKaryawanIds((int) $user->karyawan_id, (int) $participant->kpi_period_id), true);
+    }
+
     public function approveDaily(Request $request, KpiDailyReport $report, WorkCalendarService $workCalendar)
     {
         $user = $request->user();
@@ -755,18 +836,19 @@ class KpiController extends Controller
 
     private function snapshotDailyApprovalSignature(KpiDailyReport $report, Karyawan $approver, string $sourceType): string
     {
-        $source = $this->normalisePublicSignaturePath($approver->foto_tanda_tangan);
+        $source = $this->normaliseStoredPath($approver->foto_tanda_tangan);
+        $sourceLocation = $this->storedFileLocation($source);
         $label = $sourceType === 'super_admin_takeover' ? 'Super Admin' : 'Atasan Langsung';
-        abort_unless($source && Storage::disk('public')->exists($source), 422, "Tanda tangan {$label} belum tersedia. Lengkapi foto tanda tangan pada data karyawan terlebih dahulu.");
+        abort_unless($sourceLocation, 422, "Tanda tangan {$label} belum tersedia. Lengkapi foto tanda tangan pada data karyawan terlebih dahulu.");
 
         $extension = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-        $destination = 'kpi/daily-signatures/'.$report->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$extension;
-        abort_unless(Storage::disk('public')->copy($source, $destination), 422, 'Snapshot tanda tangan Daily Report gagal disimpan.');
+        $destination = 'kpi/signatures/daily/'.$report->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$extension;
+        abort_unless($this->copyToPrivateStorage($sourceLocation, $destination), 422, 'Snapshot tanda tangan Daily Report gagal disimpan.');
 
         return $destination;
     }
 
-    private function normalisePublicSignaturePath(?string $path): ?string
+    private function normaliseStoredPath(?string $path): ?string
     {
         $path = trim((string) $path);
         if ($path === '') return null;
@@ -775,13 +857,61 @@ class KpiController extends Controller
         return ltrim($path, '/');
     }
 
+    private function storedFileLocation(?string $path): ?array
+    {
+        $path = $this->normaliseStoredPath($path);
+        if (! $path) return null;
+        foreach (['local', 'public'] as $disk) {
+            if (Storage::disk($disk)->exists($path)) return ['disk' => $disk, 'path' => $path];
+        }
+        return null;
+    }
+
+    private function deleteStoredFile(?string $path): void
+    {
+        $location = $this->storedFileLocation($path);
+        if ($location) Storage::disk($location['disk'])->delete($location['path']);
+    }
+
+    private function copyToPrivateStorage(array $sourceLocation, string $destination): bool
+    {
+        $sourceDisk = Storage::disk($sourceLocation['disk']);
+        $privateDisk = Storage::disk('local');
+
+        if ($sourceLocation['disk'] === 'local') {
+            return $privateDisk->copy($sourceLocation['path'], $destination);
+        }
+
+        return $privateDisk->put($destination, $sourceDisk->get($sourceLocation['path']));
+    }
     /**
      * Kinerja Individu (KI) Page & Submit
      */
     public function individual(Request $request, KpiPeriod $period)
     {
-        $this->ensureActiveKpiPeriod($period);
+        $user = $request->user();
+        $this->ensureViewableKpiPeriod($user, $period);
+        if ($this->isPreparationPeriod($period) && $user->role()->value('nama_role') === 'super_admin' && ! $request->filled('karyawan_id')) {
+            $hasOwnParticipant = $user->karyawan_id
+                && $period->participants()->where('karyawan_id', $user->karyawan_id)->exists();
+            if (! $hasOwnParticipant) {
+                return $this->preparationPage($request, $period, 'individual', 'Kinerja Individu', 'Penilaian Kinerja Individu untuk periode ini belum dibuka.');
+            }
+        }
         $participant = $this->getParticipantOrTarget($request, $period);
+
+        if ($this->isPreparationPeriod($period)) {
+            return $this->preparationPage(
+                $request,
+                $period,
+                'individual',
+                'Kinerja Individu',
+                'Penilaian Kinerja Individu untuk periode ini belum dibuka.',
+                $participant->karyawan
+            );
+        }
+
+        $this->ensureActiveKpiPeriod($period);
         $score = KpiIndividualScore::firstOrCreate(
             ['kpi_participant_id' => $participant->id],
             [
@@ -830,6 +960,7 @@ class KpiController extends Controller
         $approver = $participant->atasanLangsung()->with(['jabatan', 'user'])->first();
 
         if ($request->isMethod('post')) {
+            $this->ensureActiveKpiPeriod($period);
             abort_unless($isSelf, 403, 'Hanya pemilik penilaian yang dapat mengisi Kinerja Individu.');
 
             if ($request->input('action') === 'recover_signature') {
@@ -918,7 +1049,7 @@ class KpiController extends Controller
             'correctionPendingReapproval' => (bool) $score->correction_pending_reapproval,
             'employeeSignature' => $employeeSignature ? $this->signaturePayload($employeeSignature) : null,
             'supervisorSignature' => $signature ? $this->signaturePayload($signature) : null,
-            'employeePeriods' => $this->employeePeriodOptions($participant->karyawan_id),
+            'employeePeriods' => $this->employeePeriodOptions($participant->karyawan_id, $request->user()),
         ]);
     }
 
@@ -950,6 +1081,15 @@ class KpiController extends Controller
      */
     public function ops(Request $request, KpiPeriod $period)
     {
+        $user = $request->user();
+        $this->ensureViewableKpiPeriod($user, $period);
+        if ($this->isPreparationPeriod($period) && $user->role()->value('nama_role') === 'super_admin' && ! $request->filled('karyawan_id')) {
+            $hasOwnParticipant = $user->karyawan_id
+                && $period->participants()->where('karyawan_id', $user->karyawan_id)->exists();
+            if (! $hasOwnParticipant) {
+                return $this->preparationPage($request, $period, 'ops', 'Kinerja OPS', 'Hasil Kinerja OPS untuk periode ini belum dibuka.');
+            }
+        }
         $participant = $this->getParticipantOrTarget($request, $period)
             ->load([
                 'period',
@@ -966,7 +1106,6 @@ class KpiController extends Controller
 
         $isWindowAllowed = $this->isNormalEntryWindow($period);
         $windowState = $this->entryWindowState($period);
-        $user = $request->user();
         $isSelf = $participant->karyawan_id === $user->karyawan_id;
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isHrd = mb_strtolower(trim((string) ($user->karyawan?->jabatan?->nama_jabatan ?? ''))) === 'hrd';
@@ -1006,9 +1145,13 @@ class KpiController extends Controller
                 $knownIds = $items->pluck('id')->map(fn ($id) => (int) $id);
                 abort_unless($submittedIds->diff($knownIds)->isEmpty(), 422, 'Item parameter tidak valid untuk peserta ini.');
 
-                DB::transaction(function () use ($participant, $period, $items, $v) {
+                $deletedEvidencePaths = [];
+                DB::transaction(function () use ($participant, $period, $items, $v, &$deletedEvidencePaths) {
                     $keepIds = $v['items'] ? collect($v['items'])->pluck('id')->filter()->map(fn ($id) => (int) $id) : collect();
-                    $items->filter(fn (KpiOpsItem $item) => ! $keepIds->contains((int) $item->id))->each->delete();
+                    $items->filter(fn (KpiOpsItem $item) => ! $keepIds->contains((int) $item->id))->each(function (KpiOpsItem $item) use (&$deletedEvidencePaths) {
+                        if ($item->bukti_path) $deletedEvidencePaths[] = $item->bukti_path;
+                        $item->delete();
+                    });
 
                     foreach ($v['items'] as $index => $itemData) {
                         $item = ! empty($itemData['id'])
@@ -1042,6 +1185,7 @@ class KpiController extends Controller
                         ]);
                     }
                 });
+                foreach (array_unique($deletedEvidencePaths) as $oldPath) $this->deleteStoredFile($oldPath);
 
                 return back()->with('success', 'Parameter Kinerja OPS berhasil disimpan.');
             }
@@ -1075,7 +1219,9 @@ class KpiController extends Controller
             $totalTargetUnit = $items->sum(fn (KpiOpsItem $item) => (float) $item->target_unit);
             abort_if($totalTargetUnit <= 0, 422, 'Total Target Unit harus lebih dari 0.');
 
-            DB::transaction(function () use ($participant, $items, $v, $totalTargetUnit, $request) {
+            $oldEvidencePaths = [];
+            $newEvidencePaths = [];
+            DB::transaction(function () use ($participant, $items, $v, $totalTargetUnit, $request, &$oldEvidencePaths, &$newEvidencePaths) {
                 foreach ($v['items'] as $index => $itemData) {
                     $existing = $items->firstWhere('id', (int) $itemData['id']);
                     abort_unless($existing, 422, 'Item Kinerja OPS tidak ditemukan pada peserta ini.');
@@ -1092,10 +1238,13 @@ class KpiController extends Controller
                     $buktiPath = $existing->bukti_path;
                     if ($request->hasFile("items.{$index}.bukti_evidence")) {
                         $file = $request->file("items.{$index}.bukti_evidence");
-                        $storedPath = $file->store('kpi/ops-evidence', 'public');
+                        $storedPath = $file->store('kpi/ops-evidence', 'local');
                         $buktiPath = $storedPath;
+                        if ($existing->bukti_path) $oldEvidencePaths[] = $existing->bukti_path;
+                        $newEvidencePaths[] = $storedPath;
                     } elseif ((bool) ($itemData['remove_bukti'] ?? false)) {
                         $buktiPath = null;
+                        if ($existing->bukti_path) $oldEvidencePaths[] = $existing->bukti_path;
                     }
 
                     $hasContent = $hasil !== null || trim((string) ($itemData['aktivitas'] ?? '')) !== '' || $buktiPath !== null;
@@ -1112,12 +1261,17 @@ class KpiController extends Controller
                     ]);
                 }
             });
+            foreach (array_unique($oldEvidencePaths) as $oldPath) $this->deleteStoredFile($oldPath);
 
             $this->createComponentSignature($participant, $participant, 'employee', $user, 'manual', 'Karyawan menyimpan dan menandatangani Kinerja OPS.');
 
             return back()->with('success', 'Kinerja OPS berhasil disimpan.');
         }
 
+        $items->each(fn (KpiOpsItem $item) => $item->setAttribute(
+            'evidence_url',
+            $item->bukti_path ? route('dashboard.kpi.ops.item.evidence', $item) : null
+        ));
         $totalKops = round($items->sum('nilai_item'), 2);
         $totalBebanTarget = round($items->sum('beban_target'), 2);
         $signatures = KpiSignature::query()
@@ -1132,7 +1286,7 @@ class KpiController extends Controller
                 'signer_name' => User::with('karyawan.jabatan')->find($signature->signed_by_user_id)?->karyawan?->nama,
                 'signer_position' => User::with('karyawan.jabatan')->find($signature->signed_by_user_id)?->karyawan?->jabatan?->nama_jabatan,
                 'signature_url' => in_array($signature->source, ['manual', 'super_admin_takeover'], true) && $signature->signature_path
-                    ? Storage::disk('public')->url($signature->signature_path)
+                    ? route('dashboard.kpi.signature.file', $signature)
                     : null,
                 'reason' => $signature->reason,
             ]);
@@ -1156,7 +1310,7 @@ class KpiController extends Controller
             'correctionPendingReapproval' => (bool) $participant->ops_correction_pending_reapproval,
             'canSignEmployee' => $hasSubmittedItems && ! $signatures->has('employee') && ((int) $participant->karyawan_id === (int) $user->karyawan_id || $isSuperAdmin),
             'canSignSupervisor' => $hasSubmittedItems && ! $signatures->has('atasan_langsung') && ((int) $participant->atasan_langsung_id === (int) $user->karyawan_id || $isSuperAdmin),
-            'employeePeriods' => $this->employeePeriodOptions($participant->karyawan_id),
+            'employeePeriods' => $this->employeePeriodOptions($participant->karyawan_id, $user),
         ]);
     }
 
@@ -1241,6 +1395,26 @@ class KpiController extends Controller
     {
         $user = $request->user();
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        $this->ensureViewableKpiPeriod($user, $period);
+
+        if ($request->isMethod('post')) {
+            $this->ensureActiveKpiPeriod($period);
+        }
+
+        if ($this->isPreparationPeriod($period)) {
+            $targetParticipant = $request->filled('karyawan_id')
+                ? $this->getParticipantOrTarget($request, $period)
+                : null;
+
+            return $this->preparationPage(
+                $request,
+                $period,
+                'mpa',
+                'MPA',
+                'Workflow MPA untuk periode ini belum dibuka.',
+                $targetParticipant?->karyawan
+            );
+        }
         // “HRD” in the MPA workflow means the administrative actor who owns
         // the HRD-initial and HRD-final stages. Existing authorization maps
         // that responsibility to HRD, Direktur/Dirut, and Super Admin.
@@ -1451,11 +1625,12 @@ class KpiController extends Controller
 
             if ($action === 'finalize') {
                 DB::transaction(function () use ($monthly, $updateData, $user): void {
-                    $sourcePath = preg_replace('#^/?(?:storage|public)/#', '', trim((string) $user->karyawan?->foto_tanda_tangan));
-                    abort_unless($sourcePath !== '' && Storage::disk('public')->exists($sourcePath), 422, 'Tanda tangan finalizer belum tersedia. Lengkapi tanda tangan akun Anda terlebih dahulu.');
+                    $sourcePath = $this->normaliseStoredPath($user->karyawan?->foto_tanda_tangan);
+                    $sourceLocation = $this->storedFileLocation($sourcePath);
+                    abort_unless($sourceLocation, 422, 'Tanda tangan finalizer belum tersedia. Lengkapi tanda tangan akun Anda terlebih dahulu.');
                     $ext = pathinfo($sourcePath, PATHINFO_EXTENSION) ?: 'png';
-                    $signaturePath = 'kpi/monthly-signatures/'.$monthly->id.'_hrd_publish_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-                    abort_unless(Storage::disk('public')->copy($sourcePath, $signaturePath), 422, 'Snapshot tanda tangan finalizer gagal disimpan.');
+                    $signaturePath = 'kpi/signatures/monthly/'.$monthly->id.'_hrd_publish_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+                    abort_unless($this->copyToPrivateStorage($sourceLocation, $signaturePath), 422, 'Snapshot tanda tangan finalizer gagal disimpan.');
                     $monthly->update($updateData);
                     // Finalization and the HRD logical signature are one
                     // business action. The authenticated finalizer is the
@@ -1581,7 +1756,9 @@ class KpiController extends Controller
             ->merge($yearAssignments->pluck('year'))
             ->merge(KpiPeriod::query()->pluck('tahun'))
             ->unique()->sortDesc()->values();
-        $periodOptions = KpiPeriod::query()->orderByDesc('tahun')->orderByDesc('bulan')->get(['id', 'bulan', 'tahun', 'status'])
+        $periodOptions = KpiPeriod::query()
+            ->when(! $isSuperAdmin, fn ($query) => $query->where('status', 'active'))
+            ->orderByDesc('tahun')->orderByDesc('bulan')->get(['id', 'bulan', 'tahun', 'status'])
             ->map(fn (KpiPeriod $item) => ['id' => $item->id, 'bulan' => $item->bulan, 'tahun' => $item->tahun, 'status' => $item->status])->values();
 
         return inertia('Internal/Kpi/MPA', [
@@ -1743,6 +1920,7 @@ class KpiController extends Controller
     public function takeoverMpa(Request $request, KpiPeriod $period, KpiMonthly $monthly)
     {
         $user = $request->user();
+        $this->ensureActiveKpiPeriod($period);
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         abort_unless($isSuperAdmin, 403, 'Hanya Super Admin yang berwenang melakukan takeover Penilai MPA.');
 
@@ -1769,14 +1947,34 @@ class KpiController extends Controller
      */
     public function monthly(Request $request, KpiPeriod $period)
     {
-        $this->ensureActiveKpiPeriod($period);
         $user = $request->user();
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        $this->ensureViewableKpiPeriod($user, $period);
         $isHrdOrDirektur = $isSuperAdmin || in_array(mb_strtolower($user->karyawan?->jabatan?->nama_jabatan ?? ''), ['direktur', 'hrd', 'dirut']);
         $useHrdWorkspace = $request->input('mode') === 'hrd';
         $targetParticipant = $request->filled('karyawan_id')
             ? $this->getParticipantOrTarget($request, $period)
             : null;
+
+        if ($this->isPreparationPeriod($period)) {
+            if (! $useHrdWorkspace && ! $targetParticipant && $user->karyawan_id) {
+                $targetParticipant = $period->participants()
+                    ->with('karyawan')
+                    ->where('karyawan_id', $user->karyawan_id)
+                    ->first();
+            }
+
+            return $this->preparationPage(
+                $request,
+                $period,
+                'monthly',
+                'Monthly',
+                'Workflow Monthly untuk periode ini belum dibuka.',
+                $targetParticipant?->karyawan
+            );
+        }
+
+        $this->ensureActiveKpiPeriod($period);
         // Monthly Individu is the default route for every account, including
         // Super Admin. The HRD/MPA workspace is opt-in via mode=hrd.
         if (! $useHrdWorkspace && ! $targetParticipant) {
@@ -1802,7 +2000,7 @@ class KpiController extends Controller
                     'source' => $signature->source,
                     'signed_at' => KpiClock::formatSignatureDateTime($signature->signed_at),
                     'signature_url' => $signature->signature_path
-                        ? Storage::disk('public')->url($signature->signature_path)
+                        ? route('dashboard.kpi.signature.file', $signature)
                         : null,
                     'reason' => $signature->reason,
                     'signer_name' => $signature->signedBy?->karyawan?->nama ?? $signature->signedBy?->name,
@@ -1847,7 +2045,7 @@ class KpiController extends Controller
                 'isOwner' => $isOwner,
                 'isMonitoring' => $isMonitoring,
                 'monitoringEmployeeId' => $isMonitoring ? $targetParticipant->karyawan_id : null,
-                'employeePeriods' => $this->employeePeriodOptions($targetParticipant->karyawan_id),
+                'employeePeriods' => $this->employeePeriodOptions($targetParticipant->karyawan_id, $user),
                 'hasLeadershipDimension' => KpiParticipant::where('kpi_period_id', $period->id)
                     ->where('atasan_langsung_id', $targetParticipant->karyawan_id)
                     ->exists(),
@@ -1920,6 +2118,7 @@ class KpiController extends Controller
     public function saveMonthlyHrd(Request $request, KpiPeriod $period)
     {
         $user = $request->user();
+        $this->ensureActiveKpiPeriod($period);
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isHrdOrDirektur = $isSuperAdmin || in_array(mb_strtolower($user->karyawan?->jabatan?->nama_jabatan ?? ''), ['direktur', 'hrd', 'dirut']);
 
@@ -2034,6 +2233,7 @@ class KpiController extends Controller
     public function publishMonthly(Request $request, KpiPeriod $period)
     {
         $user = $request->user();
+        $this->ensureActiveKpiPeriod($period);
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
         $isHrdOrDirektur = $isSuperAdmin || in_array(mb_strtolower($user->karyawan?->jabatan?->nama_jabatan ?? ''), ['direktur', 'hrd', 'dirut']);
 
@@ -2146,14 +2346,27 @@ class KpiController extends Controller
      */
     public function finalScore(Request $request, KpiPeriod $period)
     {
-        $this->ensureActiveKpiPeriod($period);
         $user = $request->user();
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        $this->ensureViewableKpiPeriod($user, $period);
         $monitoringParticipant = $request->filled('karyawan_id')
             ? $this->getParticipantOrTarget($request, $period)
             : (! $isSuperAdmin && $user->karyawan_id
                 ? $period->participants()->where('karyawan_id', $user->karyawan_id)->first()
                 : null);
+
+        if ($this->isPreparationPeriod($period)) {
+            return $this->preparationPage(
+                $request,
+                $period,
+                'final',
+                'Nilai Akhir',
+                'Nilai Akhir belum tersedia karena periode ini masih dalam tahap persiapan.',
+                $monitoringParticipant?->karyawan
+            );
+        }
+
+        $this->ensureActiveKpiPeriod($period);
         $isMonitoring = $monitoringParticipant !== null;
 
         $participantsQuery = $period->participants()->with(['karyawan', 'atasanLangsung']);
@@ -2361,7 +2574,7 @@ class KpiController extends Controller
                     'signer_name' => User::find($finalSignature->signed_by_user_id)?->name ?? 'System',
                     'signature_path' => $finalSignature->signature_path,
                     'signature_url' => $finalSignature->signature_path
-                        ? Storage::disk('public')->url($finalSignature->signature_path)
+                        ? route('dashboard.kpi.signature.file', $finalSignature)
                         : null,
                 ] : null,
             ];
@@ -2373,7 +2586,7 @@ class KpiController extends Controller
             'scores' => $finalScores,
             'isMonitoring' => (bool) $isMonitoring,
             'monitoringEmployeeId' => $monitoringParticipant?->karyawan_id,
-            'employeePeriods' => $monitoringParticipant ? $this->employeePeriodOptions($monitoringParticipant->karyawan_id) : [],
+            'employeePeriods' => $monitoringParticipant ? $this->employeePeriodOptions($monitoringParticipant->karyawan_id, $user) : [],
         ]);
     }
 
@@ -2413,6 +2626,8 @@ class KpiController extends Controller
             : $record->participant()->with(['period', 'atasanLangsung.user', 'atasanKedua.user', 'karyawan.user'])->first();
         $period = $participant?->period;
         $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+        abort_unless($period, 422, 'Periode KPI untuk tanda tangan tidak ditemukan.');
+        $this->ensureActiveKpiPeriod($period);
 
         // Authorization check based on expected signer role in period snapshot
         if ($v['signable_type'] === 'kinerja_individu') {
@@ -2533,29 +2748,33 @@ class KpiController extends Controller
 
         $signaturePath = $employee->foto_tanda_tangan;
         if ($v['signable_type'] === 'kinerja_individu') {
-            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
-            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Tanda tangan Atasan Langsung belum tersedia.');
+            $source = $this->normaliseStoredPath($employee->foto_tanda_tangan);
+            $sourceLocation = $this->storedFileLocation($source);
+            abort_unless($sourceLocation, 422, 'Tanda tangan Atasan Langsung belum tersedia.');
             $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-            $signaturePath = 'kpi/individual-signatures/'.$record->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan gagal disimpan.');
+            $signaturePath = 'kpi/signatures/individual/'.$record->id.'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless($this->copyToPrivateStorage($sourceLocation, $signaturePath), 422, 'Snapshot tanda tangan gagal disimpan.');
         } elseif ($v['signable_type'] === 'kinerja_ops') {
-            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
-            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Foto tanda tangan belum tersedia.');
+            $source = $this->normaliseStoredPath($employee->foto_tanda_tangan);
+            $sourceLocation = $this->storedFileLocation($source);
+            abort_unless($sourceLocation, 422, 'Foto tanda tangan belum tersedia.');
             $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-            $signaturePath = 'kpi/ops-signatures/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan Kinerja OPS gagal disimpan.');
+            $signaturePath = 'kpi/signatures/ops/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless($this->copyToPrivateStorage($sourceLocation, $signaturePath), 422, 'Snapshot tanda tangan Kinerja OPS gagal disimpan.');
         } elseif ($v['signable_type'] === 'monthly') {
-            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
-            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Foto tanda tangan belum tersedia.');
+            $source = $this->normaliseStoredPath($employee->foto_tanda_tangan);
+            $sourceLocation = $this->storedFileLocation($source);
+            abort_unless($sourceLocation, 422, 'Foto tanda tangan belum tersedia.');
             $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-            $signaturePath = 'kpi/monthly-signatures/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan Monthly gagal disimpan.');
+            $signaturePath = 'kpi/signatures/monthly/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless($this->copyToPrivateStorage($sourceLocation, $signaturePath), 422, 'Snapshot tanda tangan Monthly gagal disimpan.');
         } elseif ($v['signable_type'] === 'final_score') {
-            $source = preg_replace('#^/?storage/#', '', trim((string) $employee->foto_tanda_tangan));
-            abort_unless($source !== '' && Storage::disk('public')->exists($source), 422, 'Foto tanda tangan belum tersedia.');
+            $source = $this->normaliseStoredPath($employee->foto_tanda_tangan);
+            $sourceLocation = $this->storedFileLocation($source);
+            abort_unless($sourceLocation, 422, 'Foto tanda tangan belum tersedia.');
             $ext = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
-            $signaturePath = 'kpi/final-signatures/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-            abort_unless(Storage::disk('public')->copy($source, $signaturePath), 422, 'Snapshot tanda tangan Nilai Akhir gagal disimpan.');
+            $signaturePath = 'kpi/signatures/final/'.$record->id.'_'.$v['role'].'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
+            abort_unless($this->copyToPrivateStorage($sourceLocation, $signaturePath), 422, 'Snapshot tanda tangan Nilai Akhir gagal disimpan.');
         }
 
         KpiSignature::firstOrCreate(
@@ -2614,6 +2833,7 @@ class KpiController extends Controller
         ]);
 
         $period = KpiPeriod::findOrFail($v['period_id']);
+        $this->ensureActiveKpiPeriod($period);
         $participant = KpiParticipant::findOrFail($v['participant_id']);
         abort_unless((int) $participant->kpi_period_id === (int) $period->id, 422, 'Peserta tidak berada pada periode yang dipilih.');
 
@@ -2653,7 +2873,9 @@ class KpiController extends Controller
                     'corrected_at' => KpiClock::now(),
                     'correction_reason' => $v['reason'],
                 ]);
+                $oldSignaturePaths = $ki->signatures()->pluck('signature_path')->filter()->all();
                 $ki->signatures()->delete();
+                foreach ($oldSignaturePaths as $oldPath) $this->deleteStoredFile($oldPath);
                 if (! $wasNormallySubmitted) {
                     $this->createComponentSignature($ki, $participant, 'employee', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan karyawan.');
                     $this->createComponentSignature($ki, $participant, 'atasan_langsung', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan atasan langsung.');
@@ -2700,7 +2922,9 @@ class KpiController extends Controller
                     'ops_corrected_at' => KpiClock::now(),
                     'ops_correction_reason' => $v['reason'],
                 ]);
+                $oldSignaturePaths = $participant->signatures()->whereIn('role', ['employee', 'atasan_langsung'])->pluck('signature_path')->filter()->all();
                 $participant->signatures()->whereIn('role', ['employee', 'atasan_langsung'])->delete();
+                foreach ($oldSignaturePaths as $oldPath) $this->deleteStoredFile($oldPath);
                 if (! $normalComplete) {
                     $this->createComponentSignature($participant, $participant, 'employee', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan karyawan.');
                     $this->createComponentSignature($participant, $participant, 'atasan_langsung', $user, 'super_admin_takeover', 'Koreksi Super Admin mengambil alih tanda tangan atasan langsung.');
@@ -3176,6 +3400,43 @@ class KpiController extends Controller
         ];
     }
 
+    private function isPreparationPeriod(KpiPeriod $period): bool
+    {
+        return in_array($period->status, ['draft', 'preparation'], true);
+    }
+
+    private function ensureViewableKpiPeriod(User $user, KpiPeriod $period): void
+    {
+        if ($this->isPreparationPeriod($period)) {
+            abort_unless($user->role()->value('nama_role') === 'super_admin', 403, 'Periode Persiapan hanya dapat dilihat oleh Super Admin.');
+        }
+    }
+
+    private function preparationPage(
+        Request $request,
+        KpiPeriod $period,
+        string $activeTab,
+        string $moduleName,
+        string $message,
+        ?Karyawan $employee = null
+    ) {
+        $user = $request->user();
+        $periods = $employee
+            ? $this->employeePeriodOptions($employee->id, $user)
+            : $this->availableKpiPeriodOptions($user);
+
+        return inertia('Internal/Kpi/Preparation', [
+            'user' => $this->userPayload($request),
+            'period' => $period,
+            'periods' => $periods,
+            'employeePeriods' => $periods,
+            'employeeId' => $employee?->id,
+            'activeTab' => $activeTab,
+            'moduleName' => $moduleName,
+            'message' => $message,
+        ]);
+    }
+
     private function ensureActiveKpiPeriod(KpiPeriod $period): void
     {
         abort_unless($period->status === 'active', 422, 'Periode KPI masih dalam Persiapan dan belum membuka aktivitas penilaian.');
@@ -3217,13 +3478,34 @@ class KpiController extends Controller
     /**
      * Helper to get target participant from route or logged in user
      */
-    private function employeePeriodOptions(int $karyawanId): array
+    private function availableKpiPeriodOptions(User $user): array
+    {
+        $months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        $clockToday = KpiClock::today();
+        $isSuperAdmin = $user->role()->value('nama_role') === 'super_admin';
+
+        return KpiPeriod::query()
+            ->when(! $isSuperAdmin, fn ($query) => $query->where('status', 'active'))
+            ->orderBy('tahun')->orderBy('bulan')->get(['id', 'bulan', 'tahun', 'status'])
+            ->map(fn (KpiPeriod $period): array => [
+                'id' => $period->id,
+                'bulan' => $period->bulan,
+                'tahun' => $period->tahun,
+                'status' => $period->status,
+                'is_preparation' => $this->isPreparationPeriod($period),
+                'label' => ($months[((int) $period->bulan) - 1] ?? $period->bulan).' '.$period->tahun.($this->isPreparationPeriod($period) ? ' · Persiapan' : ''),
+                'is_active' => (int) $period->tahun === (int) $clockToday->year && (int) $period->bulan === (int) $clockToday->month && $period->status === 'active',
+            ])->values()->all();
+    }
+
+    private function employeePeriodOptions(int $karyawanId, ?User $viewer = null): array
     {
         $periods = KpiPeriod::query()
             ->whereHas('participants', fn ($query) => $query->where('karyawan_id', $karyawanId))
+            ->when($viewer && $viewer->role()->value('nama_role') !== 'super_admin', fn ($query) => $query->where('status', 'active'))
             ->orderBy('tahun')
             ->orderBy('bulan')
-            ->get(['id', 'bulan', 'tahun']);
+            ->get(['id', 'bulan', 'tahun', 'status']);
         $clockToday = KpiClock::today();
         $activeId = $periods
             ->first(fn (KpiPeriod $period) => (int) $period->tahun === (int) $clockToday->year && (int) $period->bulan === (int) $clockToday->month)
@@ -3234,8 +3516,10 @@ class KpiController extends Controller
             'id' => $period->id,
             'bulan' => $period->bulan,
             'tahun' => $period->tahun,
-            'label' => ($months[((int) $period->bulan) - 1] ?? $period->bulan).' '.$period->tahun,
-            'is_active' => (int) $period->id === (int) $activeId,
+            'status' => $period->status,
+            'is_preparation' => $this->isPreparationPeriod($period),
+            'label' => ($months[((int) $period->bulan) - 1] ?? $period->bulan).' '.$period->tahun.($this->isPreparationPeriod($period) ? ' · Persiapan' : ''),
+            'is_active' => (int) $period->id === (int) $activeId && $period->status === 'active',
         ])->values()->all();
     }
 
@@ -3330,14 +3614,14 @@ class KpiController extends Controller
             'signed_at' => KpiClock::formatSignatureDateTime($signature->signed_at),
             'signer_name' => $signer?->karyawan?->nama ?? $signer?->name,
             'signer_position' => $signer?->karyawan?->jabatan?->nama_jabatan,
-            'signature_url' => $signature->signature_path ? Storage::disk('public')->url($signature->signature_path) : null,
+            'signature_url' => $signature->signature_path ? route('dashboard.kpi.signature.file', $signature) : null,
         ];
     }
 
     private function assertEmployeeSignatureAvailable(User $user): void
     {
-        $source = preg_replace('#^/?(?:storage|public)/#', '', trim((string) $user->karyawan?->foto_tanda_tangan));
-        if (! $user->karyawan || $source === '' || ! Storage::disk('public')->exists($source)) {
+        $source = $this->normaliseStoredPath($user->karyawan?->foto_tanda_tangan);
+        if (! $user->karyawan || ! $this->storedFileLocation($source)) {
             throw ValidationException::withMessages([
                 'signature' => 'Tanda tangan Anda belum tersedia. Lengkapi tanda tangan terlebih dahulu sebelum menyelesaikan Kinerja Individu.',
             ]);
@@ -3347,14 +3631,15 @@ class KpiController extends Controller
     private function createComponentSignature(Model $signable, KpiParticipant $participant, string $role, User $actor, string $source = 'manual', string $reason = 'Manual Signature'): KpiSignature
     {
         abort_unless($actor->karyawan?->foto_tanda_tangan, 422, 'Tanda tangan Anda belum tersedia. Lengkapi foto tanda tangan di profil/master karyawan terlebih dahulu.');
-        $sourcePath = preg_replace('#^/?(?:storage|public)/#', '', trim((string) $actor->karyawan->foto_tanda_tangan));
-        abort_unless($sourcePath !== '' && Storage::disk('public')->exists($sourcePath), 422, 'Tanda tangan Anda belum tersedia.');
-        $folder = $signable instanceof KpiIndividualScore ? 'kpi/individual-signatures' : 'kpi/ops-signatures';
+        $sourcePath = $this->normaliseStoredPath($actor->karyawan->foto_tanda_tangan);
+        $sourceLocation = $this->storedFileLocation($sourcePath);
+        abort_unless($sourceLocation, 422, 'Tanda tangan Anda belum tersedia.');
+        $folder = $signable instanceof KpiIndividualScore ? 'kpi/signatures/individual' : 'kpi/signatures/ops';
         $ext = pathinfo($sourcePath, PATHINFO_EXTENSION) ?: 'png';
         $path = $folder.'/'.$signable->id.'_'.$role.'_'.KpiClock::now()->format('YmdHisv').'.'.$ext;
-        abort_unless(Storage::disk('public')->copy($sourcePath, $path), 422, 'Snapshot tanda tangan gagal disimpan.');
-
-        return KpiSignature::updateOrCreate(
+        abort_unless($this->copyToPrivateStorage($sourceLocation, $path), 422, 'Snapshot tanda tangan gagal disimpan.');
+        $existing = KpiSignature::where('signable_type', $signable::class)->where('signable_id', $signable->id)->where('role', $role)->first();
+        $signature = KpiSignature::updateOrCreate(
             ['signable_type' => $signable::class, 'signable_id' => $signable->id, 'role' => $role],
             [
                 'source' => $source,
@@ -3365,6 +3650,11 @@ class KpiController extends Controller
                 'reason' => $reason,
             ]
         );
+        if ($existing?->signature_path && $existing->signature_path !== $path) {
+            $stillReferenced = KpiSignature::where('signature_path', $existing->signature_path)->exists();
+            if (! $stillReferenced) $this->deleteStoredFile($existing->signature_path);
+        }
+        return $signature;
     }
 
     /** Deadline for normal Monthly supervisor signatures (day 7 next month). */

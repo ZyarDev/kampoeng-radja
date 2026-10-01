@@ -25,7 +25,7 @@ class DeleteEmployee
             Storage::disk('local')->delete($photo);
         }
         if ($signature) {
-            Storage::disk('public')->delete($signature);
+            Storage::disk('local')->delete($signature);
         }
     }
 }
