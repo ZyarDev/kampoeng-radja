@@ -3,7 +3,7 @@
 
 **Nama Sistem:** Sistem Informasi Terintegrasi Kampoeng Radja  
 **Modul:** KPI (Key Performance Indicator)  
-**Status Dokumen:** Working Baseline — Updated  
+**Status Dokumen:** SUPERSEDED — see `docs/AS_BUILT_PRD_RECONCILIATION.md`
 **Periode Dokumen:** September 2026  
 **Catatan:** Dokumen ini merupakan baseline kebutuhan bisnis terbaru. Beberapa keputusan masih ditandai sebagai **OPEN DECISION** dan tidak boleh ditentukan sendiri oleh implementor/agent tanpa konfirmasi.
 
@@ -20,7 +20,7 @@
 | ⏳ **BELUM** | Belum diimplementasikan |
 | ⚠️ **OPEN DECISION** | Masih menunggu keputusan pimpinan/tim |
 
-> **Penting:** Modul KPI secara keseluruhan **BELUM DIIMPLEMENTASIKAN**. Status ✅ hanya berlaku pada fondasi sistem yang sudah ada dan akan digunakan KPI, seperti data karyawan, atasan langsung, penempatan, role, dan foto tanda tangan.
+> **Penting:** Pernyataan lama bahwa Modul KPI belum diimplementasikan sudah tidak berlaku. KPI kini aktif pada application code. Dokumen ini dipertahankan sebagai historical baseline; requirement dan as-built behavior terbaru dicatat pada `docs/AS_BUILT_PRD_RECONCILIATION.md`.
 
 ## 0.2 Indikator Status Operasional KPI
 

@@ -477,7 +477,7 @@ Setiap Jabatan memiliki `role_id` nullable yang dapat diatur Super Admin melalui
 
 Saat akun baru dibuat, backend menyalin `jabatan.role_id` ke `users.role_id`. Jabatan tanpa Role menolak pembuatan akun dengan pesan konfigurasi yang jelas.
 
-Perubahan Role pada Jabatan hanya memengaruhi akun yang dibuat setelah perubahan. Perubahan tersebut tidak melakukan bulk update pada akun existing. Perubahan Jabatan Karyawan juga tidak menyinkronkan `users.role_id` akun existing secara otomatis.
+Perubahan Role pada Jabatan tidak melakukan bulk update pada seluruh akun. Namun ketika Jabatan seorang Karyawan berubah, `users.role_id` akun terkait wajib disinkronkan dengan `jabatan.role_id` tanpa mengganti username, PIN, atau active state.
 
 Baseline lama tetap digunakan sebagai backfill awal: Dirut/Direktur/Manajer → `super_admin`; SPV/Supervisor → `admin`; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility → `user`. Jabatan lain tetap `Belum Ditentukan` sampai dikonfigurasi Super Admin.
 
@@ -597,6 +597,8 @@ Pilihan jabatan dan departemen pada form berasal dari tabel master.
 Super Admin dapat menambah, mengedit, dan menghapus master jabatan dan departemen dengan proteksi referensi.
 
 Admin dan User hanya melihat atribut karyawan yang telah ditentukan dan tidak melihat data pribadi yang dikecualikan.
+
+Nomor HP bukan field sensitif pada keputusan final dan dapat ditampilkan kepada Super Admin, Admin, dan User sesuai payload aktif. Field sensitif yang tetap dibatasi adalah NIK, alamat, status perkawinan, KTP, dan foto tanda tangan private.
 
 Admin dan User tidak melihat aksi tambah, edit, hapus, atau menu Jabatan & Departemen.
 

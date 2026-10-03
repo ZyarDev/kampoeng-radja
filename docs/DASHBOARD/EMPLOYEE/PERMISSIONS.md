@@ -1,9 +1,9 @@
 # PERMISSIONS — Kelola Karyawan
 
-**Status:** READY FOR IMPLEMENTATION
+**Status:** FINAL — AS-BUILT
 **Last Updated:** 2026-09-20 — konfigurasi Role pada master Jabatan
 
-> **Baseline Arif 2026-08-29:** Master organisasi adalah Jabatan, Departemen, dan Penempatan. Jabatan wajib; Departemen/Penempatan nullable. Mapping role authoritative: Dirut/Direktur/Manajer → `super_admin`; SPV/Supervisor → `admin`; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility → `user`. `Staff` dan konsep `Posisi` dibatalkan. Atasan Langsung adalah self-reference Karyawan nullable. KPI tidak diimplementasikan.
+> **Baseline final:** Master organisasi adalah Jabatan, Departemen, dan Penempatan. Jabatan wajib; Departemen/Penempatan nullable. Mapping role authoritative: Dirut/Direktur/Manajer → `super_admin`; SPV/Supervisor → `admin`; Marketing/Marcom/IT/Finance/Kasir/Operasional/General/Facility → `user`. `Staff` dan konsep `Posisi` dibatalkan. Atasan Langsung adalah self-reference Karyawan nullable. Detail KPI berada pada `docs/AS_BUILT_PRD_RECONCILIATION.md`.
 
 Legenda:
 - ✅ ALLOW
@@ -63,7 +63,7 @@ Perbedaan ketiga role pada modul ini berasal dari field visibility, action permi
 | NIK | ✅ | ❌ | ❌ |
 | Alamat | ✅ | ❌ | ❌ |
 | Status Perkawinan | ✅ | ❌ | ❌ |
-| No. HP | ✅ | ❌ | ❌ |
+| No. HP | ✅ | ✅ | ✅ |
 | Foto KTP/path/URL | ✅ | ❌ | ❌ |
 
 Backend wajib menghilangkan seluruh key sensitif dari Inertia props Admin/User; menyembunyikannya hanya melalui kondisi Vue tidak memenuhi permission ini. Super Admin tetap menerima data lengkap pada Detail, Tambah, dan Edit Karyawan.
@@ -161,7 +161,7 @@ Aturan authoritative:
 8. ketika Karyawan dinonaktifkan atau diproses keluar, akun existing ikut dinonaktifkan.
 9. akun baru memakai `jabatan.role_id` sebagai sumber `users.role_id`;
 10. perubahan Role Jabatan tidak mengubah akun existing secara massal;
-11. perubahan Jabatan Karyawan tidak menyinkronkan role akun existing secara otomatis.
+11. perubahan Jabatan Karyawan wajib menyinkronkan `users.role_id` akun existing tanpa mengganti username, PIN, atau active state.
 
 ## 7.1 Konfigurasi Role Jabatan
 

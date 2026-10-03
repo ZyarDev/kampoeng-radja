@@ -176,9 +176,9 @@ watch(
             class="fixed inset-y-0 left-0 z-50 flex w-[252px] flex-col overflow-visible border-r border-[#dce3ed] bg-white transition-[width,transform] duration-300 ease-out lg:translate-x-0"
         >
             <Link :href="route('dashboard')" :class="sidebarCollapsed ? 'lg:justify-center lg:px-3' : 'lg:px-7'" class="flex h-[94px] items-center gap-3 border-b border-[#dce3ed] px-7 transition-all duration-200">
-                <img src="/assets/figma/logo-main-transparent.png" alt="Kampoeng Radja" :class="sidebarCollapsed ? 'lg:hidden' : ''" class="h-9 w-9 object-contain" />
+                <img src="/assets/brand/kampoeng-radja-navbar.png" alt="Kampoeng Radja" :class="sidebarCollapsed ? 'lg:hidden' : ''" class="h-9 w-9 object-contain" />
                 <span v-if="sidebarCollapsed" class="hidden h-9 w-10 overflow-hidden lg:block" aria-hidden="true">
-                    <img src="/assets/figma/logo-main-transparent.png" alt="" class="h-9 w-auto max-w-none object-contain object-left" />
+                    <img src="/assets/brand/kampoeng-radja-navbar.png" alt="" class="h-9 w-auto max-w-none object-contain object-left" />
                 </span>
                 <span :class="sidebarCollapsed ? 'lg:hidden' : ''">
                     <strong class="block text-[17px] font-bold leading-5 text-[#0756ba]">Kampoeng Radja</strong>

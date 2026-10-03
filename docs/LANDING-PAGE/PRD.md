@@ -66,7 +66,7 @@ Guest tidak dapat:
 
 ## 2.2 Admin / Super Admin
 
-Admin/Super Admin dapat mengelola konten publik yang memang termasuk scope panel admin Fase 1.
+CMS authorization final menggunakan matrix MARCOM-based: Super Admin, seluruh employee Departemen MARCOM, dan Admin dengan Penempatan MARCOM dapat mengelola konten publik. User/role lain tanpa kondisi tersebut tidak memperoleh CMS access. Detail implementation ada pada `app/Support/CmsAccess.php`.
 
 Detail hak akses final mengikuti `USER_FLOW.md` dan implementasi authorization yang disetujui.
 
@@ -78,7 +78,7 @@ Fase 1 menetapkan empat halaman publik:
 
 1. **Beranda**
 2. **Tentang Kami**
-3. **Wahana**
+3. **Wahana & Tempat Makan**
 4. **Galeri Event**
 
 Keempat halaman dapat diakses tanpa autentikasi.
@@ -572,7 +572,7 @@ PRD tidak mewajibkan lightbox jika desain/behavior final tidak menggunakannya.
 
 # 18. Panel Admin Fase 1
 
-Fase 1 mencakup panel admin **minimum** untuk pengelolaan konten publik.
+Fase 1 mencakup panel admin **minimum** untuk pengelolaan konten publik. Media & Berita merupakan section Beranda, bukan halaman publik terpisah pada scope final.
 
 Scope dapat mencakup:
 

@@ -1,233 +1,41 @@
 # PERMISSIONS — Closing Event
 
-**Status:** FINAL  
-**Last Updated:** 2026-08-23
+**Status:** FINAL — AS-BUILT
+**Canonical source:** `app/Support/ClosingEventAccess.php` and `docs/AS_BUILT_PRD_RECONCILIATION.md`
 
-## Prinsip
+Data Closing Event and Master Data Event use separate authorization scopes.
 
-Authorization menggunakan:
+## Data Closing Event
 
-```text
-role + jabatan + departemen
-```
+| Condition | View | Create | Update | Delete | Export |
+|---|---:|---:|---:|---:|---:|
+| `super_admin` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Department `MARKETING` or `MARCOM` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `admin` + Placement `MARKETING` or `MARCOM` | ✅ | ❌ | ✅ | ❌ | ✅ |
+| Other active internal user | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-Role global akun **tidak diubah** oleh Closing Event.
-
-Frontend hanya mengatur visibility UI. Backend tetap sumber authorization utama.
-
-## Departemen Final
-
-```text
-Management
-Marcom
-Marketing
-OPS 1
-OPS 2
-```
-
-## Capability
-
-```text
-canViewClosingEvent
-canCreateClosingEvent
-canUpdateClosingEvent
-canDeleteClosingEvent
-canExportClosingEvent
-canManageClosingEventMaster
-```
-
-Detail mengikuti `canViewClosingEvent`.
-
-## Matrix Akses
-
-| Kelompok | Kondisi | View | Create | Detail | Edit | Delete | Export | Master |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Super Admin | role `super_admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Manajer | Manajer/Manager, semua departemen | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| SPV Marcom | Supervisor + Marcom | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| SPV Marketing | Supervisor + Marketing | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| Karyawan Marketing biasa | Marketing, bukan rule di atas | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Role User | Semua jabatan/departemen | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Pengguna lain | selain kondisi di atas | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-## Prioritas Evaluasi
-
-```text
-1. Super Admin
-2. Role User → View/Detail read-only
-3. Manajer / Manager
-4. Supervisor + Marcom
-5. Supervisor + Marketing
-6. Karyawan biasa + Marketing
-7. Deny
-```
-
-Contoh:
-```text
-Manajer + OPS 1
-→ View/Create/Edit
-
-Supervisor + Marcom
-→ View/Create/Edit
-
-Supervisor + Marketing
-→ View/Create/Edit
-
-Supervisor + OPS 1
-→ DENY
-
-Supervisor + OPS 2
-→ DENY
-
-Mitra + Marketing
-→ View/Create
-
-Mitra + Marcom
-→ DENY
-
-Operasional + OPS 1
-→ DENY
-```
-
-## Menu
-
-### Super Admin
-```text
-Closing Event
-├── Data Closing Event
-└── Master Data Event
-```
-
-### Manajer / SPV Marcom / SPV Marketing / Karyawan Marketing / Role User
-```text
-Closing Event
-└── Data Closing Event
-```
-
-Role User hanya memperoleh Data Closing Event dan tidak memperoleh action mutation, Export, atau Master Data Event.
-
-### Selain itu
-Tidak tampil. Direct URL tetap ditolak backend.
-
-## Scope Data
-
-Semua actor dengan View melihat data Closing Event **company-wide**.
-
-Tidak ada scope berdasarkan:
-- creator;
-- departemen pembuat;
-- record milik sendiri.
-
-## Create
-
-Boleh:
-- Super Admin;
-- seluruh Manajer;
-- SPV Marcom;
-- SPV Marketing;
-- karyawan biasa Marketing.
-
-Backend:
-```text
-created_by = auth()->id()
-updated_by = NULL
-```
-
-## Edit
-
-Boleh:
-- Super Admin;
-- seluruh Manajer;
-- SPV Marcom;
-- SPV Marketing.
-
-Tidak ada batas waktu edit.
-
-Karyawan Marketing biasa tidak dapat edit, termasuk record yang dibuat sendiri.
-
-Capability Update yang sama juga mengizinkan perubahan status `aktif ↔ dibatalkan`. Perubahan ke `dibatalkan` wajib disertai alasan; `cancelled_by` dan `cancelled_at` ditentukan backend. Event dibatalkan tidak menjadi read-only dan reaktivasi tidak membutuhkan capability baru.
-
-## Export Excel
-
-Capability `canExportClosingEvent` diberikan kepada seluruh kelompok yang memiliki akses Closing Event:
-
-- Super Admin;
-- seluruh Manajer/Manager;
-- Supervisor + Marcom;
-- Supervisor + Marketing;
-- seluruh karyawan departemen Marketing.
-
-Export selalu company-wide berdasarkan event yang rentang pelaksanaannya beririsan dengan bulan/tahun terpilih (`tanggal` sampai `tanggal_selesai ?? tanggal`). Event aktif dan dibatalkan ikut sebagai histori; event multi-hari tetap satu row dan satu Harga Total. Actor lain tidak melihat tombol export dan direct URL ditolak dengan `403 Forbidden`.
-
-## Delete
-
-Hanya Super Admin.
-
-Unauthorized delete:
-```text
-403 Forbidden
-```
-
-## Detail
-
-Semua actor dengan View dapat membuka Detail.
-
-- Edit jika punya Update.
-- Delete jika Super Admin.
+Data Closing Event is company-wide. Active internal users outside the mutation groups retain read-only access.
 
 ## Master Data Event
 
-Hanya Super Admin dapat:
-- lihat;
-- tambah;
-- edit;
-- hapus PIC/Jenis Event/Lokasi.
+Master Data Event includes Master PIC, Master Jenis Event, and Master Lokasi.
 
-Master yang masih digunakan tidak boleh dihapus secara destruktif.
+| Condition | View | Create | Update | Delete |
+|---|---:|---:|---:|---:|
+| `super_admin` | ✅ | ✅ | ✅ | ✅ |
+| `admin` + Placement `MARKETING` or `MARCOM` | ✅ | ✅ | ✅ | ✅ |
+| Department `MARKETING` or `MARCOM` | ✅ | ❌ | ❌ | ❌ |
+| Other | ❌ | ❌ | ❌ | ❌ |
 
-## Backend Security
+## Backend requirements
 
-Wajib:
-1. authorization setiap route/action;
-2. unauthorized user tidak menerima payload Closing Event;
-3. create/update/delete backend-protected;
-4. master endpoint Super Admin only;
-5. `created_by`/`updated_by` dari authenticated user;
-6. location IDs `exists` + `distinct`;
-7. harga numeric dan nonnegative.
-8. endpoint export memeriksa `canExportClosingEvent` dan tidak bergantung pada visibility frontend.
-9. `cancelled_by` dan `cancelled_at` selalu ditetapkan backend, bukan dipercaya dari request frontend.
+- Every view and mutation route checks the relevant capability server-side.
+- Frontend visibility is UX only and is not the security boundary.
+- Department and Placement are read from authenticated relationships using canonical names, never numeric IDs.
+- Null relationships fall back safely: Data Closing Event is read-only; Master Data Event is denied unless a higher-priority rule applies.
+- `super_admin` is evaluated before employee relationships.
+- Delete/reference guards and existing business validation remain unchanged.
 
-## Test Matrix Minimum
+## Historical documentation note
 
-```text
-test_superadmin
-Admin Sistem + Management
-→ full
-
-test_manager
-Manajer + Marketing
-→ View/Create/Edit
-
-test_spv_marcom
-Supervisor + Marcom
-→ View/Create/Edit
-
-test_spv_marketing
-Supervisor + Marketing
-→ View/Create/Edit
-
-test_spv_ops
-Supervisor + OPS 1
-→ DENY
-
-test_marketing
-Mitra + Marketing
-→ View/Create
-
-test_ops
-Operasional + OPS 1
-→ DENY
-```
-
-Direct route unauthorized wajib dites.
+Earlier Manager/Supervisor/Marketing matrices are superseded by the department/placement matrix above. They are retained only in historical logs and must not be used as current authorization guidance.

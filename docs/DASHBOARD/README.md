@@ -13,7 +13,7 @@ Dashboard Internal menggunakan Laravel, Inertia, Vue, Tailwind, dan session auth
 | Data Karyawan | CRUD, scoped read-only, akun Karyawan | `IMPLEMENTED` | `EMPLOYEE/` |
 | Jabatan, Departemen & Penempatan | Master data Employee | `IMPLEMENTED` | `EMPLOYEE/` |
 | CMS | Requirement berasal dari Landing Page Fase 1 | Media Berita dan Event Promo tersedia | `LANDING-PAGE/PRD.md` + `LOG.md` |
-| KPI | Belum aktif | `NOT STARTED` | Jangan membuat docs modul sebelum requirement aktif |
+| KPI | Implemented as-built; PRD formalization required | `IMPLEMENTED` | `DASHBOARD/KPI/PRD.md` + `docs/AS_BUILT_PRD_RECONCILIATION.md` |
 | Closing Event | Requirement final role+jabatan+departemen | `IMPLEMENTED` | `CLOSING-EVENT/` |
 
 ## Urutan Baca Dashboard
@@ -40,4 +40,4 @@ Dashboard Internal menggunakan Laravel, Inertia, Vue, Tailwind, dan session auth
 
 - Data Absensi mengikuti requirement final: seluruh role dapat melihat data company-wide; hanya Super Admin dapat input/edit hari berjalan dan export Excel bulanan multi-sheet.
 - Data Karyawan, Jabatan/Departemen, dan account lifecycle mengikuti requirement aktif pada `EMPLOYEE/`.
-- Closing Event mengikuti requirement final pada `CLOSING-EVENT/`; KPI tetap planned/not started dan tidak boleh diimplementasikan melalui asumsi.
+- Closing Event mengikuti matrix final pada `CLOSING-EVENT/`; KPI mengikuti implementation as-built dan tidak lagi berstatus planned/not started.

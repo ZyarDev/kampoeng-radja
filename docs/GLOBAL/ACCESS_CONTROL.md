@@ -1,6 +1,6 @@
 # Global Access Control — Kampoeng Radja
 
-Status: **baseline konsep aktif; permission rinci mengikuti dokumen modul dan keputusan tim**
+Status: **final as-built baseline; Dashboard dan sebagian detail KPI tetap TBD**
 
 ## Tujuan
 
@@ -35,9 +35,9 @@ Kombinasi aktual tidak boleh ditebak. Jika belum diputuskan, tulis `TBD — menu
 - Middleware `admin` saat ini mengizinkan role aktif `admin` dan `super_admin` ke area `/admin`.
 - Route view Data Absensi dilindungi `auth + active`; capability backend memberikan akses view company-wide kepada `super_admin`, `admin`, dan `user`.
 - Mutation dan export Excel Absensi tetap dibatasi backend kepada `super_admin`; hide/show frontend hanya digunakan untuk UX.
-- CRUD Media Berita dan Event Promo dilindungi backend oleh `auth + admin`.
+- CMS menggunakan matrix final: `super_admin`, Departemen `MARCOM`, atau `admin` + Penempatan `MARCOM` memperoleh full CRUD; kondisi lain ditolak backend.
 - Role tidak disimpan manual di session; nilai dibaca dari relasi database.
-- Untuk akun Karyawan, Jabatan adalah sumber authoritative bagi mapping `users.role_id`; perubahan Jabatan akun existing menyinkronkan role secara transaksional dan request berikutnya memakai role database terbaru.
+- Untuk akun Karyawan baru, Jabatan adalah sumber authoritative bagi mapping `users.role_id`. Perubahan Jabatan employee wajib menyinkronkan role account existing tanpa mengubah username, PIN, atau active state.
 
 Daftar di atas adalah **implementation truth**, bukan keputusan permission final untuk modul yang masih TBD.
 

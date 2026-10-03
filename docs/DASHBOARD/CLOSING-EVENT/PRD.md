@@ -2,10 +2,12 @@
 
 ## Modul Closing Event — Kampoeng Radja
 
-**Status:** FINAL  
+**Status:** SUPERSEDED — final as-built matrix is in `docs/DASHBOARD/CLOSING-EVENT/PERMISSIONS.md`
 **Tanggal finalisasi requirement:** 23 Agustus 2026
 
 ---
+
+> **Documentation reconciliation note:** The historical Manager/Supervisor/Marketing matrix in this document is retained for history only. The final stakeholder matrix now uses Department/Placement rules and is documented in `PERMISSIONS.md` and `docs/AS_BUILT_PRD_RECONCILIATION.md`.
 
 ## 1. Ringkasan Modul
 
