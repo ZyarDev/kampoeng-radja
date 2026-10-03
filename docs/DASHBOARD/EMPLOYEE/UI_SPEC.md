@@ -252,7 +252,7 @@ Action minimum:
 
 Jika Karyawan nonaktif, tombol Aktivasi disabled dan UI menjelaskan bahwa master Karyawan harus aktif. Tidak ada action lihat PIN, lihat hash, atau delete akun.
 
-Role akun existing tetap berasal dari relasi akun. Karyawan tanpa akun menampilkan Role dari konfigurasi Jabatan sebagai calon role dan tidak dibuatkan akun otomatis. Perubahan Jabatan atau Role Jabatan tidak menyinkronkan role akun existing secara otomatis.
+Role akun existing tetap berasal dari relasi akun. Karyawan tanpa akun menampilkan Role dari konfigurasi Jabatan sebagai calon role dan tidak dibuatkan akun otomatis. Perubahan Jabatan employee existing menyinkronkan role account berdasarkan jabatan.role_id.
 
 ---
 
@@ -441,4 +441,4 @@ Wajib:
 - halaman dan submit Ganti PIN memerlukan `auth + active` tetapi dikecualikan dari forced-PIN redirect;
 - logout selalu tersedia bagi authenticated user;
 - route internal lain tidak boleh dapat dibypass selama `must_change_pin = true`.
-- create account membaca `jabatan.role_id`; perubahan Jabatan Karyawan tidak mengubah role akun existing.
+- create account membaca `jabatan.role_id`; perubahan Jabatan employee existing menyinkronkan role account berdasarkan jabatan.role_id.

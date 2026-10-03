@@ -325,7 +325,7 @@ const sign = async (role) => {
             {
                 signable_type: "kinerja_ops",
                 signable_id: props.participant.id,
-                role,
+                signature_slot: role,
             },
             { preserveScroll: true },
         );

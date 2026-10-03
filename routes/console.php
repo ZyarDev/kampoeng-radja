@@ -42,7 +42,7 @@ Artisan::command('kpi:process-deadlines', function () {
                 ->addMonthNoOverflow()
                 ->startOfMonth()
                 ->endOfDay();
-            if ($now->gte($opsDeadline)) {
+            if ($now->gt($opsDeadline)) {
                 $items = \App\Models\KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
                 if ($items->isNotEmpty()) {
                     foreach ($items as $item) {
@@ -61,7 +61,11 @@ Artisan::command('kpi:process-deadlines', function () {
             }
 
             // 3. Lewat tanggal 8: Monthly belum complete menjadi HRD_INCOMPLETE
-            if ($now->day >= 9 && $now->month === $period->bulan + 1) {
+            $monthlyIncompleteAt = \Carbon\Carbon::create($period->tahun, $period->bulan, 1, 0, 0, 0, 'Asia/Jakarta')
+                ->addMonthNoOverflow()
+                ->startOfMonth()
+                ->addDays(8);
+            if ($now->gte($monthlyIncompleteAt)) {
                 $monthly = \App\Models\KpiMonthly::firstOrCreate(['kpi_participant_id' => $participant->id]);
                 if (in_array($monthly->status, ['scheduled', 'draft', 'waiting_approval'], true)) {
                     $monthly->update([

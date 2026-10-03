@@ -51,7 +51,7 @@ const recoverSignature=()=>form.transform(()=>({action:'recover_signature'})).po
   preserveScroll:true,
   onError:(errors)=>notification.error(firstError(errors,'Tanda tangan karyawan belum dapat dipulihkan.'),{title:'Gagal Memulihkan Tanda Tangan'}),
 });
-const sign=async(role)=>{if(await confirmation.confirm({title:'Tanda Tangani Kinerja Individu?',message:`Konfirmasi Kinerja Individu periode ${periodLabel.value}.`,confirmText:'Ya, Tanda Tangani'}))router.post(route('dashboard.kpi.sign'),{signable_type:'kinerja_individu',signable_id:props.score.id,role},{preserveScroll:true,onError:(errors)=>notification.error(firstError(errors,'Tanda tangan tidak dapat disimpan.'),{title:'Gagal Menandatangani'})});};
+const sign=async(signature_slot)=>{if(await confirmation.confirm({title:'Tanda Tangani Kinerja Individu?',message:`Konfirmasi Kinerja Individu periode ${periodLabel.value}.`,confirmText:'Ya, Tanda Tangani'}))router.post(route('dashboard.kpi.sign'),{signable_type:'kinerja_individu',signable_id:props.score.id,signature_slot},{preserveScroll:true,onError:(errors)=>notification.error(firstError(errors,'Tanda tangan tidak dapat disimpan.'),{title:'Gagal Menandatangani'})});};
 </script>
 
 <template><InternalDashboardLayout title="Kinerja Individu" :user="user"><KpiEmployeeLayout>

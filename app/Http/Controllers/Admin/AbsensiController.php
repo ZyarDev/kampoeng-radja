@@ -175,21 +175,34 @@ class AbsensiController extends Controller
         abort_unless($dayStatus['is_working_day'], 422, 'Tanggal tersebut merupakan hari libur. Absensi tidak diperlukan.');
 
         DB::transaction(function () use ($validated): void {
+            $attendanceDate = CarbonImmutable::createFromFormat(
+                '!Y-m-d',
+                $validated['tanggal_absensi'],
+                'Asia/Jakarta',
+            )->toDateString();
+
             foreach ($validated['records'] as $record) {
                 $isPresent = $record['status_kehadiran'] === 'H';
+                $attributes = [
+                    'status_kehadiran' => $record['status_kehadiran'],
+                    'jam_masuk' => $isPresent ? ($record['jam_masuk'] ?? null) : null,
+                    'jam_keluar' => $isPresent ? ($record['jam_keluar'] ?? null) : null,
+                    'keterangan' => $record['keterangan'] ?? null,
+                ];
+                $attendance = Absensi::query()
+                    ->where('karyawan_id', $record['karyawan_id'])
+                    ->whereDate('tanggal_absensi', $attendanceDate)
+                    ->first();
 
-                Absensi::query()->updateOrCreate(
-                    [
+                if ($attendance) {
+                    $attendance->update($attributes);
+                } else {
+                    Absensi::create([
                         'karyawan_id' => $record['karyawan_id'],
-                        'tanggal_absensi' => $validated['tanggal_absensi'],
-                    ],
-                    [
-                        'status_kehadiran' => $record['status_kehadiran'],
-                        'jam_masuk' => $isPresent ? ($record['jam_masuk'] ?? null) : null,
-                        'jam_keluar' => $isPresent ? ($record['jam_keluar'] ?? null) : null,
-                        'keterangan' => $record['keterangan'] ?? null,
-                    ],
-                );
+                        'tanggal_absensi' => $attendanceDate,
+                        ...$attributes,
+                    ]);
+                }
             }
         });
 

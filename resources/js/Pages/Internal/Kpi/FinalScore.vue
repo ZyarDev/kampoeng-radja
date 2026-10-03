@@ -124,7 +124,7 @@ const handleSign = async (scoreRecord) => {
     router.post(route('dashboard.kpi.sign'), {
       signable_type: 'final_score',
       signable_id: scoreRecord.id,
-      role: 'employee',
+      signature_slot: 'employee',
     });
   }
 };

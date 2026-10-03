@@ -634,7 +634,12 @@ class KpiController extends Controller
                 'status' => $report->status,
                 'approved_at' => KpiClock::formatSignatureDateTime($report->approved_at),
                 'source' => $this->effectiveDailyApprovalSource($report),
-                'source_label' => $this->effectiveDailyApprovalSource($report) === 'super_admin_takeover' ? 'Takeover Super Admin' : ($this->effectiveDailyApprovalSource($report) === 'direct_supervisor' ? 'Atasan Langsung' : null),
+                'source_label' => match ($this->effectiveDailyApprovalSource($report)) {
+                    'super_admin_takeover' => 'Takeover Super Admin',
+                    'super_admin_assistance' => 'Bantuan Super Admin',
+                    'direct_supervisor' => 'Atasan Langsung',
+                    default => null,
+                },
                 'can_approve' => $canApprove,
                 'approval_mode' => $approvalMode,
                 'approval_block_reason' => $approvalBlockReason,
@@ -798,7 +803,7 @@ class KpiController extends Controller
 
         abort_unless($employee, 403, 'User tidak memiliki data karyawan untuk tanda tangan approval.');
 
-        return ['source' => 'super_admin_takeover', 'approver' => $employee];
+        return ['source' => $withinNormalWindow ? 'super_admin_assistance' : 'super_admin_takeover', 'approver' => $employee];
     }
 
     private function isDailyNormalApprovalWindow(Carbon $reportDate): bool
@@ -838,7 +843,7 @@ class KpiController extends Controller
     {
         $source = $this->normaliseStoredPath($approver->foto_tanda_tangan);
         $sourceLocation = $this->storedFileLocation($source);
-        $label = $sourceType === 'super_admin_takeover' ? 'Super Admin' : 'Atasan Langsung';
+        $label = in_array($sourceType, ['super_admin_takeover', 'super_admin_assistance'], true) ? 'Super Admin' : 'Atasan Langsung';
         abort_unless($sourceLocation, 422, "Tanda tangan {$label} belum tersedia. Lengkapi foto tanda tangan pada data karyawan terlebih dahulu.");
 
         $extension = pathinfo($source, PATHINFO_EXTENSION) ?: 'png';
@@ -2302,40 +2307,6 @@ class KpiController extends Controller
                 'published_by' => $user->id,
             ]);
 
-            // Late Publish Catch-Up Auto-Sign: if published on or after Day 9 23:59 Asia/Jakarta, perform immediate auto-sign
-            $deadline = Carbon::create($period->tahun, $period->bulan, 9, 23, 59, 59, 'Asia/Jakarta')->addMonth();
-            if ($now->gte($deadline)) {
-                foreach ($period->participants as $participant) {
-                    $m = $monthlies->firstWhere('kpi_participant_id', $participant->id);
-                    if ($m) {
-                        $expectedSigners = [
-                            'employee' => $participant->karyawan?->user?->id,
-                            'atasan_langsung' => $participant->atasanLangsung?->user?->id,
-                            'atasan_kedua' => $participant->atasanKedua?->user?->id,
-                        ];
-
-                        foreach ($expectedSigners as $role => $userId) {
-                            if ($userId || $role === 'employee' || $role === 'atasan_langsung') {
-                                KpiSignature::firstOrCreate(
-                                    [
-                                        'signable_type' => KpiMonthly::class,
-                                        'signable_id' => $m->id,
-                                        'role' => $role,
-                                    ],
-                                    [
-                                        'source' => 'automatic',
-                                        'signed_for_user_id' => $userId,
-                                        'signed_by_user_id' => null,
-                                        'signature_path' => null,
-                                        'signed_at' => $now,
-                                        'reason' => 'deadline',
-                                    ]
-                                );
-                            }
-                        }
-                    }
-                }
-            }
         });
 
         return back()->with('success', "Seluruh Monthly periode {$period->bulan}/{$period->tahun} berhasil dipublish.");
@@ -2391,7 +2362,9 @@ class KpiController extends Controller
             $monthlySignaturesComplete = $this->monthlySignaturesComplete($monthly);
             $mpaScore = $monthlySignaturesComplete ? (float) ($monthly?->mpa_score ?? 0) : 0.0;
             $attScore = $monthlySignaturesComplete ? (float) ($this->resolvedMonthlyAttendanceScore($monthly) ?? 0) : 0.0;
-            $rpScore = (float) ($monthly?->reward_punishment_score ?? 0);
+            $rpScore = $monthlySignaturesComplete
+                ? (float) ($monthly?->reward_punishment_score ?? 0)
+                : 0.0;
 
             // Intermediate calculation (precise desimal)
             $totalScoreRaw = $kiScore + $opsScore + $mpaScore + $attScore + $rpScore;
@@ -2631,7 +2604,7 @@ class KpiController extends Controller
 
         // Authorization check based on expected signer role in period snapshot
         if ($v['signable_type'] === 'kinerja_individu') {
-            $requestedRole = $v['role'] ?: 'atasan_langsung';
+            $requestedRole = $v['signature_slot'] ?? $v['role'] ?? 'atasan_langsung';
             $isEmployee = (int) $user->karyawan_id === (int) $participant->karyawan_id;
             $isDirectSupervisor = (int) $user->karyawan_id === (int) $participant->atasan_langsung_id;
             abort_if(in_array($record->status, ['auto_signed', 'locked'], true), 422, 'Kinerja Individu sudah dikunci.');
@@ -2649,11 +2622,11 @@ class KpiController extends Controller
                 abort_unless($employeeSignature || $reapproval, 422, 'Tanda tangan karyawan belum tersedia.');
                 if ($isDirectSupervisor && ($withinDeadline || $reapproval)) {
                     $v['role'] = 'atasan_langsung';
-                    $signatureSource = 'manual';
+                    $signatureSource = $isDirectSupervisor ? 'direct_supervisor' : ($withinDeadline ? 'super_admin_assistance' : 'super_admin_takeover');
                 } else {
                     abort_unless($isSuperAdmin && ! $reapproval, 403, 'Batas tanda tangan Atasan Langsung telah berakhir.');
                     $v['role'] = 'atasan_langsung';
-                    $signatureSource = $withinDeadline ? 'manual' : 'super_admin_takeover';
+                    $signatureSource = $withinDeadline ? 'super_admin_assistance' : 'super_admin_takeover';
                 }
             }
             abort_if(KpiSignature::where('signable_type', KpiIndividualScore::class)->where('signable_id', $record->id)->where('role', $v['role'])->exists(), 422, 'Tanda tangan untuk peran ini sudah tersimpan.');
@@ -2662,7 +2635,7 @@ class KpiController extends Controller
             $period = $participant->period()->first();
             $isOpsEmployee = (int) $user->karyawan_id === (int) $participant->karyawan_id;
             $isOpsSupervisor = (int) $user->karyawan_id === (int) $participant->atasan_langsung_id;
-            $requestedRole = $v['role'];
+            $requestedRole = $v['signature_slot'] ?? $v['role'] ?? null;
 
             // Identity from the participant snapshot has priority. A Super
             // Admin who is also the employee/supervisor signs normally; only
@@ -2677,7 +2650,7 @@ class KpiController extends Controller
                 abort_unless($isSuperAdmin, 403, 'Hanya karyawan, Atasan Langsung snapshot, atau Super Admin yang berwenang menandatangani Kinerja OPS.');
                 abort_unless(in_array($requestedRole, ['employee', 'atasan_langsung'], true), 422, 'Peran tanda tangan Kinerja OPS tidak valid.');
                 $v['role'] = $requestedRole;
-                $signatureSource = $withinDeadline ? 'manual' : 'super_admin_takeover';
+                $signatureSource = $withinDeadline ? 'super_admin_assistance' : 'super_admin_takeover';
             }
 
             $opsItems = KpiOpsItem::where('kpi_participant_id', $participant->id)->get();
@@ -2716,7 +2689,7 @@ class KpiController extends Controller
                 // Super Admin may assist before the deadline and take over
                 // after it. Only the latter is displayed as Dialihkan.
                 $v['role'] = $requestedRole;
-                $signatureSource = $withinDeadline ? 'manual' : 'super_admin_takeover';
+                $signatureSource = $withinDeadline ? 'super_admin_assistance' : 'super_admin_takeover';
             } else {
                 abort(403, 'Anda tidak berwenang menandatangani slot Monthly ini atau batas normal telah berakhir.');
             }
@@ -2737,9 +2710,10 @@ class KpiController extends Controller
                 $v['role'] = 'employee';
             } elseif ((int) $user->karyawan_id === (int) $participant->atasan_langsung_id && $withinDeadline) {
                 $v['role'] = 'atasan_langsung';
+                $signatureSource = 'direct_supervisor';
             } elseif ($isSuperAdmin) {
-                $v['role'] = $v['role'] ?: 'atasan_langsung';
-                $signatureSource = 'super_admin_takeover';
+                $v['role'] = $v['signature_slot'] ?? $v['role'] ?? 'atasan_langsung';
+                $signatureSource = $withinDeadline ? 'super_admin_assistance' : 'super_admin_takeover';
             } else {
                 abort(403, 'Batas tanda tangan Nilai Akhir telah berakhir atau Anda bukan pihak yang berwenang.');
             }
@@ -3003,7 +2977,9 @@ class KpiController extends Controller
             $monthlySignaturesComplete = $this->monthlySignaturesComplete($m);
             $mpaScore = $monthlySignaturesComplete ? (float) ($m?->mpa_score ?? 0) : 0.0;
             $attScore = $monthlySignaturesComplete ? (float) ($this->resolvedMonthlyAttendanceScore($m) ?? 0) : 0.0;
-            $rpScore = (float) ($m?->reward_punishment_score ?? 0);
+            $rpScore = $monthlySignaturesComplete
+                ? (float) ($m?->reward_punishment_score ?? 0)
+                : 0.0;
 
             $totalScoreFinal = round($kiScore + $opsScore + $mpaScore + $attScore + $rpScore, 2);
             $kategori = $totalScoreFinal >= 80.00 ? 'Reward' : 'Punishment';

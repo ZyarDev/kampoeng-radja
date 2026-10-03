@@ -215,6 +215,66 @@ class EmployeeManagementTest extends TestCase
         Storage::disk('local')->assertExists($employee->foto_ktp);
     }
 
+    public function test_changing_employee_position_syncs_existing_account_role_without_changing_credentials(): void
+    {
+        $admin = $this->userWithRole('super_admin');
+        $adminRole = Role::firstOrCreate(['nama_role' => 'admin']);
+        $superAdminRole = Role::firstOrCreate(['nama_role' => 'super_admin']);
+        $oldPosition = Jabatan::create(['nama_jabatan' => 'Manager Sync Test', 'role_id' => $adminRole->id]);
+        $newPosition = Jabatan::create(['nama_jabatan' => 'Direktur Sync Test', 'role_id' => $superAdminRole->id]);
+        $account = User::factory()->create(['role_id' => $adminRole->id, 'is_active' => true]);
+        $employee = $account->karyawan;
+        $employee->update(['jabatan_id' => $oldPosition->id]);
+        $username = $account->username;
+        $pinHash = $account->getRawOriginal('pin');
+
+        $this->actingAs($admin)->put(route('dashboard.karyawan.update', $employee), $this->validEmployeeData([
+            'nik' => $employee->nik,
+            'nama' => $employee->nama,
+            'jabatan_id' => $newPosition->id,
+        ]))->assertRedirect(route('dashboard.karyawan.show', $employee));
+
+        $account->refresh();
+        $this->assertSame($superAdminRole->id, $account->role_id);
+        $this->assertSame($username, $account->username);
+        $this->assertSame($pinHash, $account->getRawOriginal('pin'));
+        $this->assertTrue((bool) $account->is_active);
+    }
+
+    public function test_employee_without_account_can_change_to_position_without_role(): void
+    {
+        $admin = $this->userWithRole('super_admin');
+        $employee = $this->employeeWithoutUser();
+        $position = Jabatan::create(['nama_jabatan' => 'No Role Sync Test', 'role_id' => null]);
+
+        $this->actingAs($admin)->put(route('dashboard.karyawan.update', $employee), $this->validEmployeeData([
+            'nik' => $employee->nik,
+            'nama' => $employee->nama,
+            'jabatan_id' => $position->id,
+        ]))->assertRedirect(route('dashboard.karyawan.show', $employee));
+
+        $this->assertSame($position->id, $employee->refresh()->jabatan_id);
+    }
+
+    public function test_existing_account_cannot_change_to_position_without_role(): void
+    {
+        $admin = $this->userWithRole('super_admin');
+        $account = User::factory()->create();
+        $employee = $account->karyawan;
+        $position = Jabatan::create(['nama_jabatan' => 'Invalid Role Sync Test', 'role_id' => null]);
+        $originalPosition = $employee->jabatan_id;
+        $originalRole = $account->role_id;
+
+        $this->actingAs($admin)->put(route('dashboard.karyawan.update', $employee), $this->validEmployeeData([
+            'nik' => $employee->nik,
+            'nama' => $employee->nama,
+            'jabatan_id' => $position->id,
+        ]))->assertSessionHasErrors('jabatan_id');
+
+        $this->assertSame($originalPosition, $employee->refresh()->jabatan_id);
+        $this->assertSame($originalRole, $account->refresh()->role_id);
+    }
+
     public function test_deactivation_preserves_attendance_and_disables_existing_user(): void
     {
         $admin = $this->userWithRole('super_admin');
