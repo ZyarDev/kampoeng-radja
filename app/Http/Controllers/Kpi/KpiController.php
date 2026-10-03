@@ -418,6 +418,17 @@ class KpiController extends Controller
         abort_unless(collect($employeePeriods)->contains(fn ($item) => (int) $item['id'] === $selectedPeriodId), 404, 'Karyawan tidak tercatat pada periode KPI ini.');
         $this->ensureViewableKpiPeriod($viewer, $selectedPeriod);
 
+        // Daily reports predate the participant relation and some historical
+        // rows therefore have no supervisor snapshot of their own.  When a
+        // participant exists for the selected period, use its immutable
+        // identity snapshot as the canonical KPI context (the same source
+        // used by KI, K-OPS, and Monthly).
+        $participant = KpiParticipant::query()
+            ->with(['karyawan', 'atasanLangsung'])
+            ->where('kpi_period_id', $selectedPeriod->id)
+            ->where('karyawan_id', $employee->id)
+            ->first();
+
         if ($this->isPreparationPeriod($selectedPeriod)) {
             return $this->preparationPage(
                 $request,
@@ -602,6 +613,10 @@ class KpiController extends Controller
             default => null,
         };
 
+        $identityEmployee = $participant?->karyawan ?? $employee;
+        $snapshotSupervisor = $report->atasanSnapshot
+            ?? $participant?->atasanLangsung;
+
         return inertia('Internal/Kpi/DailyReport', [
             'user' => $this->userPayload($request),
             'report' => $report->exists ? tap($report->load(['activities', 'approver.karyawan', 'atasanSnapshot.jabatan']), function ($loadedReport) {
@@ -617,16 +632,19 @@ class KpiController extends Controller
             'statusKehadiran' => $statusKehadiran,
             'isEligible' => $isWorkingDay && $statusKehadiran === 'H',
             'employeeHeader' => [
-                'id' => $employee->id,
-                'nama' => $employee->nama,
-                'nik' => $employee->nik,
+                'id' => $identityEmployee->id,
+                'nama' => $identityEmployee->nama,
+                'nik' => $identityEmployee->nik,
                 'perusahaan' => 'Kampoeng Radja',
-                'jabatan' => $employee->jabatan?->nama_jabatan ?? '-',
-                'departemen' => $employee->departemen?->nama_departemen ?? '-',
-                'penempatan' => $employee->penempatan?->nama_penempatan ?? '-',
+                'jabatan' => $participant?->jabatan_snapshot ?: ($identityEmployee->jabatan?->nama_jabatan ?? '-'),
+                'departemen' => $participant?->departemen_snapshot ?: ($identityEmployee->departemen?->nama_departemen ?? '-'),
+                'penempatan' => $participant?->penempatan_snapshot ?: ($identityEmployee->penempatan?->nama_penempatan ?? '-'),
                 // Approval ownership is historical. Do not silently replace a
                 // missing snapshot with the employee's current hierarchy.
-                'atasan_langsung' => $report->atasanSnapshot?->nama ?? '-',
+                'atasan_langsung' => $report->atasanSnapshot?->nama
+                    ?? $participant?->atasan_langsung_snapshot
+                    ?? $snapshotSupervisor?->nama
+                    ?? '-',
             ],
             'approvalInfo' => [
                 'name' => $report->approver?->karyawan?->nama ?? $report->atasanSnapshot?->nama ?? '-',
