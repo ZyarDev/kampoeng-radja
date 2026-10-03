@@ -40,7 +40,10 @@ class LandingPageTest extends TestCase
             ->component('Wahana')
             ->has('categories.0.labels', 2)
             ->has('photos', 1)
-            ->where('photos.0.labels.0.slug', 'air'));
+            ->where('photos.0.labels.0.slug', 'air')
+            ->where('photos.0.cover_url', '/storage/example.jpg')
+            ->where('photos.0.photos.0.url', '/storage/example.jpg')
+            ->missing('photos.0.photo_path'));
     }
 
     public function test_home_exposes_media_photo_as_a_single_public_storage_url(): void
@@ -57,7 +60,7 @@ class LandingPageTest extends TestCase
         $this->get('/')->assertInertia(fn (Assert $page) => $page
             ->component('Home')
             ->has('news', 1)
-            ->where('news.0.foto_url', url('/storage/media-berita/contoh.jpg'))
+            ->where('news.0.foto_url', '/storage/media-berita/contoh.jpg')
             ->missing('news.0.foto')
             ->missing('news.0.image'));
     }
@@ -85,7 +88,7 @@ class LandingPageTest extends TestCase
             ->has('articles', 2)
             ->where('articles.0.title', 'Berita Terbaru')
             ->where('articles.0.description', 'Deskripsi berita terbaru.')
-            ->where('articles.0.foto_url', url('/storage/media-berita/terbaru.jpg'))
+            ->where('articles.0.foto_url', '/storage/media-berita/terbaru.jpg')
             ->where('articles.0.tanggal_publish', '2026-08-12T10:00:00+00:00')
             ->where('articles.1.title', 'Berita Lama')
             ->missing('articles.0.category')
@@ -120,10 +123,10 @@ class LandingPageTest extends TestCase
             ->component('GaleriEvent')
             ->has('events', 1)
             ->has('events.0.photos', 2)
-            ->where('events.0.photos.0.url', url('/storage/event-featured.jpg'))
+            ->where('events.0.photos.0.url', '/storage/event-featured.jpg')
             ->where('events.0.photos.0.caption', 'Foto utama')
             ->where('events.0.photos.0.urutan', 1)
-            ->where('events.0.photos.1.url', url('/storage/event.jpg'))
+            ->where('events.0.photos.1.url', '/storage/event.jpg')
             ->missing('events.0.photos.0.photo_path'));
     }
 }

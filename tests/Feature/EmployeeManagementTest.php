@@ -91,7 +91,7 @@ class EmployeeManagementTest extends TestCase
             ->has('employees.data.0.position')->has('employees.data.0.department')->has('employees.data.0.employmentStatus')
             ->has('employees.data.0.activeStatus')->has('employees.data.0.joinedAt')->has('employees.data.0.leftAt')
             ->missing('employees.data.0.nik')->missing('employees.data.0.address')
-            ->missing('employees.data.0.maritalStatus')->missing('employees.data.0.phone')
+            ->missing('employees.data.0.maritalStatus')->has('employees.data.0.phone')
             ->missing('employees.data.0.hasKtpPhoto')->missing('employees.data.0.ktpPhotoUrl'));
 
         $this->actingAs($admin)->get(route('dashboard.karyawan.show', $same))->assertInertia(fn (Assert $page) => $page
@@ -100,13 +100,13 @@ class EmployeeManagementTest extends TestCase
             ->has('employee.position')->has('employee.department')->has('employee.employmentStatus')
             ->has('employee.activeStatus')->has('employee.joinedAt')->has('employee.leftAt')
             ->missing('employee.nik')->missing('employee.address')->missing('employee.maritalStatus')
-            ->missing('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
+            ->has('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
             ->missing('employee.account')->missing('employee.accountRole'));
         $this->actingAs($admin)->get(route('dashboard.karyawan.show', $outside))->assertInertia(fn (Assert $page) => $page
             ->where('employee.name', 'Rahasia Luar')
             ->has('employee.department')
             ->missing('employee.nik')->missing('employee.address')->missing('employee.maritalStatus')
-            ->missing('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl'));
+            ->has('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl'));
 
         $this->actingAs($admin)->get('/dashboard/karyawan?departemen_id='.$otherDepartment->id)->assertInertia(fn (Assert $page) => $page
             ->has('employees.data', 1)
@@ -141,7 +141,7 @@ class EmployeeManagementTest extends TestCase
             ->has('employees.data.0.position')->has('employees.data.0.department')->has('employees.data.0.employmentStatus')
             ->has('employees.data.0.activeStatus')->has('employees.data.0.joinedAt')->has('employees.data.0.leftAt')
             ->missing('employees.data.0.nik')->missing('employees.data.0.address')
-            ->missing('employees.data.0.maritalStatus')->missing('employees.data.0.phone')
+            ->missing('employees.data.0.maritalStatus')->has('employees.data.0.phone')
             ->missing('employees.data.0.hasKtpPhoto')->missing('employees.data.0.ktpPhotoUrl'));
         $this->actingAs($user)->get(route('dashboard.karyawan.show', $user->karyawan))->assertInertia(fn (Assert $page) => $page
             ->has('employee.name')->has('employee.gender')->has('employee.religion')
@@ -149,7 +149,7 @@ class EmployeeManagementTest extends TestCase
             ->has('employee.position')->has('employee.department')->has('employee.employmentStatus')
             ->has('employee.activeStatus')->has('employee.joinedAt')->has('employee.leftAt')
             ->missing('employee.nik')->missing('employee.address')->missing('employee.maritalStatus')
-            ->missing('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
+            ->has('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
             ->missing('employee.account')->missing('employee.accountRole'));
         $this->actingAs($user)->get(route('dashboard.karyawan.show', $outside))->assertInertia(fn (Assert $page) => $page
             ->where('employee.id', $outside->id)
@@ -158,7 +158,7 @@ class EmployeeManagementTest extends TestCase
             ->has('employee.position')->has('employee.department')->has('employee.employmentStatus')
             ->has('employee.activeStatus')->has('employee.joinedAt')->has('employee.leftAt')
             ->missing('employee.nik')->missing('employee.address')->missing('employee.maritalStatus')
-            ->missing('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
+            ->has('employee.phone')->missing('employee.hasKtpPhoto')->missing('employee.ktpPhotoUrl')
             ->missing('employee.account')->missing('employee.accountRole'));
         $this->actingAs($user)->get('/dashboard/karyawan/create')->assertForbidden();
         $this->actingAs($user)->post('/dashboard/karyawan', [])->assertForbidden();
@@ -281,7 +281,9 @@ class EmployeeManagementTest extends TestCase
         $employeeUser = User::factory()->create();
         Absensi::create(['karyawan_id' => $employeeUser->karyawan_id, 'tanggal_absensi' => '2026-08-17', 'status_kehadiran' => 'H']);
 
-        $this->actingAs($admin)->patch(route('dashboard.karyawan.deactivate', $employeeUser->karyawan))->assertRedirect();
+        $this->actingAs($admin)->patch(route('dashboard.karyawan.exit', $employeeUser->karyawan), [
+            'tanggal_keluar' => '2026-08-17',
+        ])->assertRedirect();
 
         $this->assertDatabaseHas('karyawan', ['id' => $employeeUser->karyawan_id, 'status_keaktifan' => 'nonaktif']);
         $this->assertDatabaseHas('users', ['id' => $employeeUser->id, 'is_active' => false]);

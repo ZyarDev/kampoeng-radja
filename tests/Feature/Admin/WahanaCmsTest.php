@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\Role;
+use App\Models\Penempatan;
 use App\Models\User;
 use App\Models\Wahana;
 use App\Models\WahanaFoto;
@@ -167,10 +168,10 @@ class WahanaCmsTest extends TestCase
             ->where('photos.0.title', 'Biasa')
             ->where('photos.1.title', 'Urutan Satu')
             ->where('photos.2.title', 'Urutan Dua')
-            ->where('photos.1.cover_url', url('/storage/wahana/urutan-satu-cover.jpg'))
+            ->where('photos.1.cover_url', '/storage/wahana/urutan-satu-cover.jpg')
             ->has('photos.1.photos', 2)
-            ->where('photos.1.photos.0.url', url('/storage/wahana/urutan-satu-cover.jpg'))
-            ->where('photos.1.photos.1.url', url('/storage/wahana/urutan-satu-detail.jpg'))
+            ->where('photos.1.photos.0.url', '/storage/wahana/urutan-satu-cover.jpg')
+            ->where('photos.1.photos.1.url', '/storage/wahana/urutan-satu-detail.jpg')
             ->missing('photos.1.photo_path')
             ->where('categories.0.labels', fn ($labels) => collect($labels)->doesntContain('name', 'Dewasa')));
 
@@ -178,16 +179,24 @@ class WahanaCmsTest extends TestCase
             ->where('featuredRideFallbackEnabled', false)
             ->has('featuredRides', 2)
             ->where('featuredRides.0.title', 'Urutan Satu')
-            ->where('featuredRides.0.cover_url', url('/storage/wahana/urutan-satu-cover.jpg'))
+            ->where('featuredRides.0.cover_url', '/storage/wahana/urutan-satu-cover.jpg')
             ->where('featuredRides.1.title', 'Urutan Dua')
             ->missing('featuredRides.0.photo_path'));
     }
 
     private function userWithRole(string $roleName): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'role_id' => Role::firstOrCreate(['nama_role' => $roleName])->id,
         ]);
+
+        if ($roleName === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function validData(array $overrides = []): array

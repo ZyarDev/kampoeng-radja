@@ -8,6 +8,7 @@ use App\Models\Jabatan;
 use App\Models\JenisEvent;
 use App\Models\Lokasi;
 use App\Models\Pic;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -33,62 +34,59 @@ class ClosingEventTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_guest_and_unauthorized_users_cannot_receive_closing_event_pages(): void
+    public function test_guest_and_read_only_users_follow_closing_event_view_matrix(): void
     {
         $this->get(route('dashboard.closing-event.index'))->assertRedirect(route('login'));
         $event = $this->createEvent($this->actor('super_admin', 'Admin Sistem', 'Management'), '2026-08-20');
 
-        foreach ([
-            $this->actor('admin', 'Supervisor', 'OPS 1'),
-            $this->actor('admin', 'Supervisor', 'OPS 2'),
-            $this->actor('user', 'Mitra', 'Marcom'),
-            $this->actor('user', 'Operasional', 'OPS 1'),
-        ] as $actor) {
-            $this->actingAs($actor)->get(route('dashboard.closing-event.index'))->assertForbidden();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.create'))->assertForbidden();
-            $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertForbidden();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.show', $event))->assertForbidden();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.edit', $event))->assertForbidden();
-            $this->actingAs($actor)->put(route('dashboard.closing-event.update', $event), $this->validData())->assertForbidden();
-            $this->actingAs($actor)->delete(route('dashboard.closing-event.destroy', $event))->assertForbidden();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertForbidden();
-        }
+        $actor = $this->actor('user', 'Staff', 'Operasional');
+        $this->actingAs($actor)->get(route('dashboard.closing-event.index'))->assertOk();
+        $this->actingAs($actor)->get(route('dashboard.closing-event.show', $event))->assertOk();
+        $this->actingAs($actor)->get(route('dashboard.closing-event.create'))->assertForbidden();
+        $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertForbidden();
+        $this->actingAs($actor)->get(route('dashboard.closing-event.edit', $event))->assertForbidden();
+        $this->actingAs($actor)->put(route('dashboard.closing-event.update', $event), $this->validData())->assertForbidden();
+        $this->actingAs($actor)->delete(route('dashboard.closing-event.destroy', $event))->assertForbidden();
+        $this->actingAs($actor)->get(route('dashboard.closing-event.export', ['bulan' => 8, 'tahun' => 2026]))->assertForbidden();
+        $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertForbidden();
     }
 
-    public function test_manager_and_allowed_supervisors_can_create_and_update_but_not_delete_or_manage_master(): void
+    public function test_admin_with_marketing_placement_can_update_but_not_create_or_delete(): void
     {
-        foreach ([
-            $this->actor('admin', 'Manajer', 'Management'),
-            $this->actor('admin', 'Supervisor', 'Marcom'),
-            $this->actor('admin', 'Supervisor', 'Marketing'),
-        ] as $actor) {
-            $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertRedirect();
-            $event = ClosingEvent::query()->latest('id')->firstOrFail();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.show', $event))->assertOk();
+        foreach (['Marketing', 'Marcom'] as $placement) {
+            $actor = $this->actor('admin', 'Supervisor', 'Operasional', $placement);
+            $event = $this->createEvent($this->actor('super_admin', 'Admin Sistem', 'Management'), '2026-08-20');
+
+            $this->actingAs($actor)->get(route('dashboard.closing-event.index'))->assertOk();
+            $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertForbidden();
             $this->actingAs($actor)->get(route('dashboard.closing-event.edit', $event))->assertOk();
             $this->actingAs($actor)->put(route('dashboard.closing-event.update', $event), $this->validData(['konsumen' => 'Diperbarui']))->assertRedirect();
             $this->actingAs($actor)->delete(route('dashboard.closing-event.destroy', $event))->assertForbidden();
-            $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertForbidden();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.export', ['bulan' => 8, 'tahun' => 2026]))->assertOk();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertOk();
         }
     }
 
     public function test_access_matrix_and_shared_sidebar_capabilities_are_enforced(): void
     {
         $matrix = [
-            [$this->actor('super_admin', 'Admin Sistem', 'Management'), true, true],
-            [$this->actor('admin', 'Manajer', 'OPS 1'), true, false],
-            [$this->actor('admin', 'Supervisor', 'Marcom'), true, false],
-            [$this->actor('admin', 'Supervisor', 'Marketing'), true, false],
-            [$this->actor('user', 'Mitra', 'Marketing'), false, false],
+            [$this->actor('super_admin', 'Admin Sistem', 'Management'), [true, true, true, true, true], true],
+            [$this->actor('user', 'Staff', 'Marketing'), [true, true, true, true, true], false],
+            [$this->actor('user', 'Staff', 'Marcom'), [true, true, true, true, true], false],
+            [$this->actor('admin', 'Staff', 'Operasional', 'Marketing'), [true, false, true, false, true], true],
+            [$this->actor('admin', 'Staff', 'Operasional'), [true, false, false, false, false], false],
+            [$this->actor('user', 'Staff', 'Operasional', 'Marketing'), [true, false, false, false, false], false],
         ];
 
-        foreach ($matrix as [$actor, $canUpdate, $canManageMaster]) {
+        foreach ($matrix as [$actor, $capabilities, $canManageMaster]) {
             $response = $this->actingAs($actor)->get(route('dashboard.closing-event.index'));
             $response->assertOk()->assertInertia(fn (Assert $page) => $page
                 ->component('Internal/ClosingEvent/Index')
-                ->where('permissions.canView', true)
-                ->where('permissions.canCreate', true)
-                ->where('permissions.canUpdate', $canUpdate)
+                ->where('permissions.canView', $capabilities[0])
+                ->where('permissions.canCreate', $capabilities[1])
+                ->where('permissions.canUpdate', $capabilities[2])
+                ->where('permissions.canDelete', $capabilities[3])
+                ->where('permissions.canExport', $capabilities[4])
                 ->where('auth.closingEvent.canView', true)
                 ->where('auth.closingEvent.canManageMaster', $canManageMaster));
         }
@@ -107,7 +105,7 @@ class ClosingEventTest extends TestCase
         $this->assertNull($event->updated_by);
         $this->assertCount(3, $event->lokasi);
 
-        $manager = $this->actor('admin', 'Manajer', 'OPS 2');
+        $manager = $this->actor('admin', 'Manajer', 'Operasional', 'Marketing');
         $updated = $this->validData([
             'konsumen' => 'Konsumen Diperbarui',
             'lokasi_ids' => Lokasi::query()->limit(2)->pluck('id')->all(),
@@ -125,17 +123,33 @@ class ClosingEventTest extends TestCase
         $this->assertDatabaseMissing('closing_event_lokasi', ['closing_event_id' => $event->id]);
     }
 
-    public function test_marketing_employee_can_view_create_and_detail_but_cannot_update_delete_or_master(): void
+    public function test_marketing_department_employee_has_full_data_access_but_read_only_master_access(): void
     {
-        $actor = $this->actor('user', 'Mitra', 'Marketing');
-        $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertRedirect();
-        $event = ClosingEvent::query()->firstOrFail();
+        foreach (['Marketing', 'Marcom'] as $department) {
+            $actor = $this->actor('user', 'Mitra', $department);
+            $this->actingAs($actor)->post(route('dashboard.closing-event.store'), $this->validData())->assertRedirect();
+            $event = ClosingEvent::query()->latest('id')->firstOrFail();
 
-        $this->actingAs($actor)->get(route('dashboard.closing-event.show', $event))->assertOk();
-        $this->actingAs($actor)->get(route('dashboard.closing-event.edit', $event))->assertForbidden();
-        $this->actingAs($actor)->put(route('dashboard.closing-event.update', $event), $this->validData())->assertForbidden();
-        $this->actingAs($actor)->delete(route('dashboard.closing-event.destroy', $event))->assertForbidden();
-        $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertForbidden();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.show', $event))->assertOk();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.edit', $event))->assertOk();
+            $this->actingAs($actor)->put(route('dashboard.closing-event.update', $event), $this->validData())->assertRedirect();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.export', ['bulan' => 8, 'tahun' => 2026]))->assertOk();
+            $this->actingAs($actor)->delete(route('dashboard.closing-event.destroy', $event))->assertRedirect();
+            $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertOk();
+            $this->actingAs($actor)->post(route('dashboard.closing-event.master.pic.store'), ['nama_pic' => "{$department} PIC"])->assertForbidden();
+        }
+    }
+
+    public function test_admin_with_marketing_or_marcom_placement_can_manage_master_data(): void
+    {
+        foreach (['Marketing', 'Marcom'] as $placement) {
+            $actor = $this->actor('admin', 'Staff', 'Operasional', $placement);
+            $this->actingAs($actor)->get(route('dashboard.closing-event.master.index'))->assertOk();
+            $this->actingAs($actor)->post(route('dashboard.closing-event.master.pic.store'), ['nama_pic' => "{$placement} MASTER"])->assertSessionHas('success');
+            $pic = Pic::query()->where('nama_pic', "{$placement} MASTER")->firstOrFail();
+            $this->actingAs($actor)->put(route('dashboard.closing-event.master.pic.update', $pic), ['nama_pic' => "{$placement} MASTER UPDATED"])->assertSessionHas('success');
+            $this->actingAs($actor)->delete(route('dashboard.closing-event.master.pic.destroy', $pic))->assertSessionHas('success');
+        }
     }
 
     public function test_validation_rejects_invalid_master_locations_and_numeric_boundaries(): void
@@ -243,7 +257,7 @@ class ClosingEventTest extends TestCase
         $this->assertSame(11, Lokasi::query()->count());
     }
 
-    private function actor(string $role, string $position, string $department): User
+    private function actor(string $role, string $position, string $department, ?string $placement = null): User
     {
         $user = User::factory()->create([
             'role_id' => Role::firstOrCreate(['nama_role' => $role])->id,
@@ -251,6 +265,9 @@ class ClosingEventTest extends TestCase
         $user->karyawan->update([
             'jabatan_id' => Jabatan::firstOrCreate(['nama_jabatan' => $position])->id,
             'departemen_id' => Departemen::firstOrCreate(['nama_departemen' => $department])->id,
+            'penempatan_id' => $placement === null
+                ? $user->karyawan->penempatan_id
+                : Penempatan::firstOrCreate(['nama_penempatan' => $placement])->id,
         ]);
 
         return $user->refresh();

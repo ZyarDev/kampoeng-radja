@@ -59,7 +59,7 @@ class EmployeeAccountManagementTest extends TestCase
         $this->assertTrue(Hash::check('654321', $account->getRawOriginal('pin')));
     }
 
-    public function test_role_mapping_is_case_insensitive_and_does_not_use_client_role(): void
+    public function test_account_role_comes_from_jabatan_role_and_ignores_client_role(): void
     {
         $admin = $this->userWithRole('super_admin');
         Role::firstOrCreate(['nama_role' => 'admin']);
@@ -67,17 +67,12 @@ class EmployeeAccountManagementTest extends TestCase
 
         $cases = [
             'Direktur Utama' => 'super_admin',
-            'ADMIN SISTEM' => 'super_admin',
             'Manajer Marketing' => 'admin',
-            'Manager Marketing' => 'admin',
-            'Supervisor Operasional' => 'admin',
-            'Mitra Strategis' => 'user',
             'Operasional (OPS)' => 'user',
-            'Facility (FLT)' => 'user',
         ];
 
         foreach ($cases as $position => $expectedRole) {
-            $employee = $this->employeeWithoutAccount($position);
+            $employee = $this->employeeWithoutAccount($position, $expectedRole);
             $username = 'map_'.str()->random(12);
 
             $this->actingAs($admin)->post(route('dashboard.karyawan.account.store', $employee), [
@@ -94,7 +89,7 @@ class EmployeeAccountManagementTest extends TestCase
     public function test_unmapped_position_and_second_account_are_rejected(): void
     {
         $admin = $this->userWithRole('super_admin');
-        $unmapped = $this->employeeWithoutAccount('Operator Wahana');
+        $unmapped = $this->employeeWithoutAccount('Operator Wahana', null);
 
         $this->actingAs($admin)->post(route('dashboard.karyawan.account.store', $unmapped), [
             'username' => 'operator.unmapped',
@@ -103,7 +98,7 @@ class EmployeeAccountManagementTest extends TestCase
         ])->assertSessionHasErrors('account');
         $this->assertDatabaseMissing('users', ['karyawan_id' => $unmapped->id]);
 
-        $employee = $this->employeeWithoutAccount('Supervisor Operasional');
+        $employee = $this->employeeWithoutAccount('Supervisor Operasional', 'admin');
         $this->createAccount($admin, $employee, 'supervisor.one');
 
         $this->actingAs($admin)->post(route('dashboard.karyawan.account.store', $employee), [
@@ -252,12 +247,17 @@ class EmployeeAccountManagementTest extends TestCase
         ]);
     }
 
-    private function employeeWithoutAccount(string $position): Karyawan
+    private function employeeWithoutAccount(string $position, ?string $roleName = 'admin'): Karyawan
     {
         $user = User::factory()->create();
         $employee = $user->karyawan;
+        $roleId = $roleName === null ? null : Role::where('nama_role', $roleName)->value('id');
+        $jabatan = Jabatan::firstOrCreate(['nama_jabatan' => $position], ['role_id' => $roleId]);
+        if ($jabatan->role_id !== $roleId) {
+            $jabatan->update(['role_id' => $roleId]);
+        }
         $employee->update([
-            'jabatan_id' => Jabatan::firstOrCreate(['nama_jabatan' => $position])->id,
+            'jabatan_id' => $jabatan->id,
             'status_keaktifan' => 'aktif',
         ]);
         $user->delete();

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\Produk;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,8 +105,8 @@ class ProdukCmsTest extends TestCase
         $this->get(route('home'))->assertInertia(fn (Assert $page) => $page
             ->component('Home')->has('products', 2)
             ->where('products.0.id', $first->id)->where('products.1.id', $second->id)
-            ->where('products.0.thumbnail', url('/storage/products/first.jpg'))
-            ->where('products.0.heroImage', url('/storage/products/first-hero.jpg')));
+            ->where('products.0.thumbnail', '/storage/products/first.jpg')
+            ->where('products.0.heroImage', '/storage/products/first-hero.jpg'));
     }
 
     private function validPayload(array $overrides = []): array
@@ -123,7 +124,15 @@ class ProdukCmsTest extends TestCase
 
     private function userWithRole(string $name): User
     {
-        return User::factory()->create(['role_id' => Role::firstOrCreate(['nama_role' => $name])->id]);
+        $user = User::factory()->create(['role_id' => Role::firstOrCreate(['nama_role' => $name])->id]);
+
+        if ($name === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function fakeImage(string $name): UploadedFile

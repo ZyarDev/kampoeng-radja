@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\EventPromo;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\WhatsAppNumber;
@@ -187,7 +188,7 @@ class EventPromoCrudTest extends TestCase
             ->where('promotions.0.description', 'Deskripsi singkat promo pengujian.')
             ->where('promotions.0.detail', 'Deskripsi lengkap promo pengujian.')
             ->where('promotions.0.period', $promo->periodLabel())
-            ->where('promotions.0.poster_url', url('/storage/event-promo/promo.jpg'))
+            ->where('promotions.0.poster_url', '/storage/event-promo/promo.jpg')
             ->where('promotions.0.link_wa', 'https://wa.me/628123456789')
             ->missing('promotions.0.poster')
             ->missing('promotions.0.image'));
@@ -312,7 +313,15 @@ class EventPromoCrudTest extends TestCase
     {
         $role = Role::firstOrCreate(['nama_role' => $roleName]);
 
-        return User::factory()->create(['role_id' => $role->id]);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        if ($roleName === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function createEventPromo(

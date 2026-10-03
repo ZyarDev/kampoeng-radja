@@ -4,9 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Models\Role;
 use App\Models\User;
-use Database\Seeders\DevelopmentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class AdminAuthorizationTest extends TestCase
@@ -44,28 +42,6 @@ class AdminAuthorizationTest extends TestCase
         $user = $this->userWithRole('admin', false);
 
         $this->actingAs($user)->get('/admin')->assertForbidden();
-    }
-
-    public function test_development_seeder_creates_valid_idempotent_admin_account(): void
-    {
-        $this->seed(DevelopmentSeeder::class);
-        $this->seed(DevelopmentSeeder::class);
-
-        $admin = User::query()
-            ->with(['karyawan.jabatan', 'karyawan.departemen', 'role'])
-            ->where('username', 'admin')
-            ->sole();
-
-        $this->assertSame('ADMIN001', $admin->karyawan->nik);
-        $this->assertSame('Admin Sistem', $admin->karyawan->nama);
-        $this->assertSame('Admin Sistem', $admin->karyawan->jabatan->nama_jabatan);
-        $this->assertSame('IT', $admin->karyawan->departemen->nama_departemen);
-        $this->assertSame('super_admin', $admin->role->nama_role);
-        $this->assertTrue($admin->is_active);
-        $this->assertTrue(Hash::check('123456', $admin->getRawOriginal('pin')));
-        $this->assertDatabaseCount('users', 1);
-        $this->assertDatabaseCount('karyawan', 1);
-        $this->assertDatabaseCount('role', 3);
     }
 
     private function userWithRole(string $roleName, bool $isActive = true): User

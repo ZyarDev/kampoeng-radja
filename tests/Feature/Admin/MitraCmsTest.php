@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\Mitra;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -84,7 +85,7 @@ class MitraCmsTest extends TestCase
         $this->get(route('home'))->assertInertia(fn (Assert $page) => $page
             ->component('Home')->has('partners', 2)
             ->where('partners.0.id', $first->id)->where('partners.1.id', $second->id)
-            ->where('partners.0.logo', url('/storage/partners/first.jpg')));
+            ->where('partners.0.logo', '/storage/partners/first.jpg'));
     }
 
     private function createPartner(User $user, string $logo, array $overrides = []): Mitra
@@ -97,7 +98,15 @@ class MitraCmsTest extends TestCase
 
     private function userWithRole(string $name): User
     {
-        return User::factory()->create(['role_id' => Role::firstOrCreate(['nama_role' => $name])->id]);
+        $user = User::factory()->create(['role_id' => Role::firstOrCreate(['nama_role' => $name])->id]);
+
+        if ($name === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function fakeImage(string $name): UploadedFile

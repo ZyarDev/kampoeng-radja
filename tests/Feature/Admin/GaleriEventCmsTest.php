@@ -4,6 +4,7 @@ namespace Tests\Feature\Admin;
 
 use App\Models\GaleriEvent;
 use App\Models\GaleriEventFoto;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,19 +152,27 @@ class GaleriEventCmsTest extends TestCase
             ->where('events.0.nama_event', 'Album Kedua')
             ->where('events.0.tanggal_event', '2026-08-17')
             ->where('events.0.deskripsi', 'Deskripsi Album Kedua')
-            ->where('events.0.photos.0.url', url('/storage/galeri-event/featured.jpg'))
+            ->where('events.0.photos.0.url', '/storage/galeri-event/featured.jpg')
             ->where('events.0.photos.0.caption', 'Featured default')
             ->where('events.0.photos.0.urutan', 1)
-            ->where('events.0.photos.1.url', url('/storage/galeri-event/foto-kedua.jpg'))
+            ->where('events.0.photos.1.url', '/storage/galeri-event/foto-kedua.jpg')
             ->where('events.1.id', $olderId->id)
             ->missing('events.0.photos.0.foto'));
     }
 
     private function userWithRole(string $roleName): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'role_id' => Role::firstOrCreate(['nama_role' => $roleName])->id,
         ]);
+
+        if ($roleName === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function validData(array $overrides = []): array

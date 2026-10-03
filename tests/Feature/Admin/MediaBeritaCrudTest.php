@@ -3,6 +3,7 @@
 namespace Tests\Feature\Admin;
 
 use App\Models\MediaBerita;
+use App\Models\Penempatan;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -168,7 +169,15 @@ class MediaBeritaCrudTest extends TestCase
     {
         $role = Role::firstOrCreate(['nama_role' => $roleName]);
 
-        return User::factory()->create(['role_id' => $role->id]);
+        $user = User::factory()->create(['role_id' => $role->id]);
+
+        if ($roleName === 'admin') {
+            $user->karyawan->update([
+                'penempatan_id' => Penempatan::firstOrCreate(['nama_penempatan' => 'MARCOM'])->id,
+            ]);
+        }
+
+        return $user->refresh();
     }
 
     private function createNews(User $creator, string $photo, string $title = 'Berita Pengujian'): MediaBerita
